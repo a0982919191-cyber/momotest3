@@ -9,7 +9,7 @@ from products import PRODUCT_CATALOG
 import datetime
 
 # ==========================================
-# 1. 全局設定 & 狀態管理
+# 1. 全局設定 & 密碼鎖定 (最優先執行)
 # ==========================================
 st.set_page_config(
     page_title="Momo Design Pro",
@@ -17,11 +17,56 @@ st.set_page_config(
     layout="wide"
 )
 
+# --- [核心] 全站存取密碼邏輯 ---
+def check_site_access():
+    """要求輸入密碼才能觀看內容"""
+    if "site_authenticated" not in st.session_state:
+        st.session_state["site_authenticated"] = False
+
+    if not st.session_state["site_authenticated"]:
+        # 鎖定畫面的樣式
+        st.markdown("""
+            <style>
+            .lock-container {
+                text-align: center;
+                padding: 50px 20px;
+                background: white;
+                border-radius: 15px;
+                box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+                max-width: 400px;
+                margin: 50px auto;
+            }
+            .stTextInput > div > div > input { text-align: center; }
+            </style>
+            <div class='lock-container'>
+                <h1 style='color:#333; margin-bottom:10px;'>🔒 內部系統鎖定</h1>
+                <p style='color:#666; font-size:14px;'>此為 Momo Design 內部測試環境</p>
+            </div>
+        """, unsafe_allow_html=True)
+        
+        # 密碼輸入框置中處理
+        c1, c2, c3 = st.columns([1, 1, 1])
+        with c2:
+            pwd = st.text_input("請輸入存取密碼", type="password", label_visibility="collapsed", placeholder="請輸入密碼")
+            if st.button("解鎖登入", type="primary", use_container_width=True):
+                if pwd == "momo2025": # 👈 全站密碼在這裡設定
+                    st.session_state["site_authenticated"] = True
+                    st.rerun()
+                else:
+                    st.error("密碼錯誤")
+        st.stop() # 沒通過前，停止載入下方所有內容
+
+# 執行鎖定檢查
+check_site_access()
+
+# ==========================================
+# 2. 狀態初始化
+# ==========================================
 if "user_role" not in st.session_state: st.session_state["user_role"] = "guest"
 if "user_info" not in st.session_state: st.session_state["user_info"] = {"name": "", "code": "GUEST", "is_ambassador": False}
 
 # ==========================================
-# 2. 字型強制修復
+# 3. 字型強制修復
 # ==========================================
 FONT_URL = "https://raw.githubusercontent.com/google/fonts/main/ofl/notosanstc/NotoSansTC-Regular.ttf"
 FONT_FILE = "NotoSansTC-Regular.ttf"
@@ -44,7 +89,7 @@ def get_font_obj(size):
     except: return ImageFont.load_default()
 
 # ==========================================
-# 3. CSS 美化
+# 4. CSS 美化
 # ==========================================
 st.markdown("""
     <style>
@@ -62,10 +107,9 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ==========================================
-# 4. 詢價單生成 (含聯絡人資訊)
+# 5. 詢價單生成 (含聯絡人資訊)
 # ==========================================
 def generate_inquiry_card(img, data):
-    # 加高畫布以容納更多資訊
     w, h = 800, 1250 
     card = Image.new("RGB", (w, h), "white")
     draw = ImageDraw.Draw(card)
@@ -77,12 +121,12 @@ def generate_inquiry_card(img, data):
     
     header_color = "#0ba360"
     
-    # 1. 標題區
+    # 標題區
     draw.rectangle([(0,0), (w, 130)], fill=header_color)
     draw.text((40, 45), "Momo Design 需求詢價單", fill="white", font=f_title)
     draw.text((w-250, 60), str(datetime.date.today()), fill="#e2e8f0", font=f_norm)
     
-    # 2. 產品示意圖
+    # 產品示意圖
     t_w = 400
     ratio = t_w / img.width
     t_h = int(img.height * ratio)
@@ -90,12 +134,12 @@ def generate_inquiry_card(img, data):
     draw.rectangle([( (w-t_w)//2 - 5, 160 - 5), ( (w-t_w)//2 + t_w + 5, 160 + t_h + 5)], fill="#f0f0f0")
     card.paste(res, ((w-t_w)//2, 160), res if res.mode=='RGBA' else None)
     
-    # 3. 資料區開始
+    # 資料區
     y = 160 + t_h + 50
     draw.line([(50, y), (750, y)], fill="#e2e8f0", width=2)
     y += 30
     
-    # --- 區塊 A: 聯絡資料 ---
+    # 區塊 A: 聯絡資料
     draw.text((50, y), "【聯絡資料】", fill=header_color, font=f_head)
     y += 40
     
@@ -106,18 +150,16 @@ def generate_inquiry_card(img, data):
         ("LINE ID", data.get('line', '-'))
     ]
     
-    # 雙欄排列聯絡資訊 (左右各兩項)
     col1_x, col2_x = 60, 420
     for i, (k, v) in enumerate(contact_infos):
-        # 決定畫在左欄還是右欄
         curr_x = col1_x if i % 2 == 0 else col2_x
         draw.text((curr_x, y), f"{k}：", fill="#718096", font=f_norm)
         draw.text((curr_x + 100, y), str(v), fill="#2d3748", font=f_norm)
-        if i % 2 == 1: y += 40 # 每畫完兩個換下一行
+        if i % 2 == 1: y += 40
             
-    y += 20 # 區塊間距
+    y += 20
     
-    # --- 區塊 B: 訂購需求 ---
+    # 區塊 B: 訂購需求
     draw.text((50, y), "【訂購需求】", fill=header_color, font=f_head)
     y += 40
     
@@ -130,8 +172,6 @@ def generate_inquiry_card(img, data):
     
     for k, v in order_infos:
         draw.text((60, y), f"{k}：", fill="#718096", font=f_norm)
-        
-        # 備註自動換行處理
         content_str = str(v)
         max_char = 28
         first_line = True
@@ -140,7 +180,7 @@ def generate_inquiry_card(img, data):
             draw.text((160, y), line, fill="#2d3748", font=f_norm)
             y += 35
             first_line = False
-        if first_line: y += 35 # 如果只有一行，也要加高度
+        if first_line: y += 35
 
     # Footer
     draw.rectangle([(0, h-60), (w, h)], fill="#f7fafc")
@@ -160,7 +200,7 @@ def add_watermark(base, text):
     return Image.alpha_composite(base, wm)
 
 # ==========================================
-# 5. 側邊欄
+# 6. 側邊欄
 # ==========================================
 with st.sidebar:
     st.title("👤 會員中心")
@@ -184,7 +224,7 @@ with st.sidebar:
             st.rerun()
 
 # ==========================================
-# 6. 主畫面
+# 7. 主畫面
 # ==========================================
 mode_cols = st.columns([2, 1])
 with mode_cols[0]:
@@ -257,20 +297,16 @@ with col_preview:
     except Exception as e:
         st.error(f"圖片載入錯誤: {e}")
 
-# --- 底部行動區 (詢價/下載) ---
+# --- 底部行動區 ---
 with col_tools:
     if mode == "公司團體 (詢價)":
         st.markdown('<div class="tools-container" style="margin-top:20px; border-left:4px solid #0ba360;">', unsafe_allow_html=True)
         st.markdown("### 📋 3. 填寫詢價資料")
         
-        # [新增] 聯絡資料輸入區
         nm = st.text_input("單位/公司名稱")
-        
-        # 分欄讓版面更整齊
         cc1, cc2 = st.columns(2)
         with cc1: contact_person = st.text_input("聯絡人姓名")
         with cc2: contact_phone = st.text_input("聯絡電話")
-        
         contact_line = st.text_input("LINE ID (選填)")
         
         c_q, c_n = st.columns([1, 2])
@@ -278,7 +314,6 @@ with col_tools:
         with c_n: nt = st.text_input("備註")
         
         if st.button("📄 生成並下載詢價單", type="primary", use_container_width=True):
-            # 打包資料
             inquiry_data = {
                 "name": nm or "Guest",
                 "contact": contact_person,
@@ -289,7 +324,6 @@ with col_tools:
                 "qty": qt,
                 "note": nt
             }
-            
             with st.spinner("正在生成詢價單..."):
                 card = generate_inquiry_card(final_img, inquiry_data)
                 buf = io.BytesIO(); card.save(buf, format="PNG")
