@@ -2,344 +2,372 @@ import streamlit as st
 import io
 import os
 import requests
-import platform
+import pandas as pd
 from PIL import Image, ImageDraw, ImageFont
 from rembg import remove
 from products import PRODUCT_CATALOG
 import datetime
 
 # ==========================================
-# 1. 全局設定 & 密碼鎖定 (最優先執行)
+# 1. 全局設定 & 模擬資料庫
 # ==========================================
-st.set_page_config(
-    page_title="Momo Design Pro",
-    page_icon="✨",
-    layout="wide"
-)
+st.set_page_config(page_title="Momo Design Pro", page_icon="💎", layout="wide")
 
-# --- [核心] 全站存取密碼邏輯 ---
-def check_site_access():
-    """要求輸入密碼才能觀看內容"""
-    if "site_authenticated" not in st.session_state:
-        st.session_state["site_authenticated"] = False
+# [模擬資料庫] 使用 cache_resource 讓資料在伺服器重啟前暫時保留
+# 注意：在真實商業環境，這裡應該換成 Google Sheets API 或 SQL 資料庫
+@st.cache_resource
+def get_database():
+    return {"members": []}
 
-    if not st.session_state["site_authenticated"]:
-        # 鎖定畫面的樣式
-        st.markdown("""
-            <style>
-            .lock-container {
-                text-align: center;
-                padding: 50px 20px;
-                background: white;
-                border-radius: 15px;
-                box-shadow: 0 4px 15px rgba(0,0,0,0.1);
-                max-width: 400px;
-                margin: 50px auto;
-            }
-            .stTextInput > div > div > input { text-align: center; }
-            </style>
-            <div class='lock-container'>
-                <h1 style='color:#333; margin-bottom:10px;'>🔒 內部系統鎖定</h1>
-                <p style='color:#666; font-size:14px;'>此為 Momo Design 內部測試環境</p>
-            </div>
-        """, unsafe_allow_html=True)
-        
-        # 密碼輸入框置中處理
-        c1, c2, c3 = st.columns([1, 1, 1])
+db = get_database()
+
+# 初始化 Session
+if "user_role" not in st.session_state: st.session_state["user_role"] = "guest"
+if "user_info" not in st.session_state: st.session_state["user_info"] = {}
+if "site_locked" not in st.session_state: st.session_state["site_locked"] = True
+
+# ==========================================
+# 2. 全站密碼鎖
+# ==========================================
+def check_lock():
+    if st.session_state["site_locked"]:
+        st.markdown("<h2 style='text-align:center;'>🔒 Momo 內部系統</h2>", unsafe_allow_html=True)
+        c1, c2, c3 = st.columns([1,1,1])
         with c2:
-            pwd = st.text_input("請輸入存取密碼", type="password", label_visibility="collapsed", placeholder="請輸入密碼")
-            if st.button("解鎖登入", type="primary", use_container_width=True):
-                if pwd == "momo2025": # 👈 全站密碼在這裡設定
-                    st.session_state["site_authenticated"] = True
+            pwd = st.text_input("請輸入密碼", type="password", label_visibility="collapsed")
+            if st.button("進入系統", use_container_width=True):
+                if pwd == "momo2025": # 全站密碼
+                    st.session_state["site_locked"] = False
                     st.rerun()
                 else:
                     st.error("密碼錯誤")
-        st.stop() # 沒通過前，停止載入下方所有內容
+        st.stop()
 
-# 執行鎖定檢查
-check_site_access()
-
-# ==========================================
-# 2. 狀態初始化
-# ==========================================
-if "user_role" not in st.session_state: st.session_state["user_role"] = "guest"
-if "user_info" not in st.session_state: st.session_state["user_info"] = {"name": "", "code": "GUEST", "is_ambassador": False}
+check_lock()
 
 # ==========================================
-# 3. 字型強制修復
+# 3. 字型終極處理 (自動下載 + 手動救援)
 # ==========================================
-FONT_URL = "https://raw.githubusercontent.com/google/fonts/main/ofl/notosanstc/NotoSansTC-Regular.ttf"
 FONT_FILE = "NotoSansTC-Regular.ttf"
+DEFAULT_FONT_URL = "https://raw.githubusercontent.com/google/fonts/main/ofl/notosanstc/NotoSansTC-Regular.ttf"
 
 @st.cache_resource
-def load_font_file():
-    if not os.path.exists(FONT_FILE) or os.path.getsize(FONT_FILE) < 1000000:
+def load_system_font():
+    # 嘗試自動下載
+    if not os.path.exists(FONT_FILE):
         try:
-            headers = {'User-Agent': 'Mozilla/5.0'}
-            r = requests.get(FONT_URL, headers=headers, timeout=45)
+            r = requests.get(DEFAULT_FONT_URL, timeout=10)
             if r.status_code == 200:
                 with open(FONT_FILE, "wb") as f: f.write(r.content)
         except: pass
     return FONT_FILE
 
-load_font_file()
+load_system_font()
 
+# 字型物件取得器 (支援使用者手動上傳的字型)
 def get_font_obj(size):
-    try: return ImageFont.truetype(FONT_FILE, size)
-    except: return ImageFont.load_default()
+    # 優先檢查是否有手動上傳的字型 (存於 session)
+    if "custom_font_bytes" in st.session_state:
+        return ImageFont.truetype(io.BytesIO(st.session_state["custom_font_bytes"]), size)
+    
+    # 其次使用系統自動下載的
+    if os.path.exists(FONT_FILE):
+        return ImageFont.truetype(FONT_FILE, size)
+        
+    # 最後回退預設
+    return ImageFont.load_default()
 
 # ==========================================
-# 4. CSS 美化
+# 4. CSS 美化 (手機優化版)
 # ==========================================
 st.markdown("""
     <style>
-    .stApp { background-color: #f4f7f6; font-family: "Microsoft JhengHei", sans-serif; }
-    .block-container { padding-top: 2rem; padding-bottom: 3rem; }
-    .banner-box { padding: 25px; border-radius: 16px; margin-bottom: 25px; text-align: center; box-shadow: 0 10px 25px -5px rgba(0,0,0,0.1); color: white; }
-    .theme-default { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); }
-    .theme-corp { background: linear-gradient(135deg, #0ba360 0%, #3cba92 100%); }
-    .banner-title { font-size: 28px; font-weight: 800; margin-bottom: 8px; letter-spacing: 1px; }
-    .price-card { background: white; padding: 20px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.05); border: 1px solid #eee; text-align: center; margin-top: 10px; }
-    .price-val { font-size: 32px; font-weight: 800; color: #2d3748; }
-    .tools-container { background: white; padding: 20px; border-radius: 16px; box-shadow: 0 2px 10px rgba(0,0,0,0.03); border: 1px solid #f0f0f0; }
+    .stApp { background-color: #f8f9fa; font-family: "Microsoft JhengHei", sans-serif; }
+    .block-container { padding-top: 1rem; padding-bottom: 3rem; }
+    
+    /* 頂部會員狀態條 (手機可見) */
+    .member-bar {
+        background: white; padding: 10px 15px; border-radius: 8px;
+        margin-bottom: 15px; border-left: 5px solid #667eea;
+        box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+        font-size: 14px; display: flex; justify-content: space-between; align-items: center;
+    }
+    
+    /* 詢價單卡片 */
+    .inquiry-card {
+        background: #fff; border: 1px solid #e2e8f0; border-radius: 12px;
+        padding: 20px; box-shadow: 0 4px 6px rgba(0,0,0,0.05);
+    }
+    
+    /* 按鈕優化 */
+    .stButton>button { border-radius: 8px; font-weight: bold; }
+    
     #MainMenu, footer, header {visibility: hidden;}
     </style>
 """, unsafe_allow_html=True)
 
 # ==========================================
-# 5. 詢價單生成 (含聯絡人資訊)
+# 5. 核心邏輯：詢價單生成
 # ==========================================
-def generate_inquiry_card(img, data):
-    w, h = 800, 1250 
+def generate_inquiry(img, data):
+    w, h = 800, 1300
     card = Image.new("RGB", (w, h), "white")
     draw = ImageDraw.Draw(card)
     
-    f_title = get_font_obj(40)
-    f_head = get_font_obj(24)
-    f_norm = get_font_obj(20)
-    f_small = get_font_obj(16)
+    # 顏色定義
+    c_primary = "#2c3e50"
+    c_highlight = "#e67e22"
     
-    header_color = "#0ba360"
+    # 字體
+    f_xl = get_font_obj(40)
+    f_l = get_font_obj(30)
+    f_m = get_font_obj(24)
+    f_s = get_font_obj(20)
     
-    # 標題區
-    draw.rectangle([(0,0), (w, 130)], fill=header_color)
-    draw.text((40, 45), "Momo Design 需求詢價單", fill="white", font=f_title)
-    draw.text((w-250, 60), str(datetime.date.today()), fill="#e2e8f0", font=f_norm)
+    # Header
+    draw.rectangle([(0,0), (w, 140)], fill=c_primary)
+    draw.text((40, 50), "Momo Design 需求詢價單", fill="white", font=f_xl)
+    draw.text((w-250, 60), str(datetime.date.today()), fill="#ccc", font=f_s)
     
-    # 產品示意圖
+    # 圖片區
     t_w = 400
     ratio = t_w / img.width
     t_h = int(img.height * ratio)
     res = img.resize((t_w, t_h))
-    draw.rectangle([( (w-t_w)//2 - 5, 160 - 5), ( (w-t_w)//2 + t_w + 5, 160 + t_h + 5)], fill="#f0f0f0")
-    card.paste(res, ((w-t_w)//2, 160), res if res.mode=='RGBA' else None)
+    draw.rectangle([((w-t_w)//2-5, 170-5), ((w-t_w)//2+t_w+5, 170+t_h+5)], fill="#eee")
+    card.paste(res, ((w-t_w)//2, 170), res if res.mode=='RGBA' else None)
     
-    # 資料區
-    y = 160 + t_h + 50
-    draw.line([(50, y), (750, y)], fill="#e2e8f0", width=2)
+    y = 170 + t_h + 50
+    draw.line([(50,y), (750,y)], fill="#ddd", width=2)
     y += 30
     
-    # 區塊 A: 聯絡資料
-    draw.text((50, y), "【聯絡資料】", fill=header_color, font=f_head)
-    y += 40
+    # --- 核心商業邏輯：推廣碼顯示 ---
+    # 如果有推廣碼，印在顯眼位置
+    promo_code = data.get('promo_code')
+    if promo_code and promo_code != "GUEST":
+        draw.rectangle([(50, y), (750, y+60)], fill="#fff3cd") # 黃色底
+        draw.text((70, y+15), f"★ 推薦人/分潤代碼：{promo_code}", fill="#856404", font=f_l)
+        y += 90
     
-    contact_infos = [
-        ("單位名稱", data.get('name', '-')),
-        ("聯絡姓名", data.get('contact', '-')),
-        ("聯絡電話", data.get('phone', '-')),
-        ("LINE ID", data.get('line', '-'))
+    # 資料欄位
+    fields = [
+        ("詢價單位", data.get('name')),
+        ("聯絡人", data.get('contact')),
+        ("電話", data.get('phone')),
+        ("LINE ID", data.get('line')),
+        ("---", "---"), # 分隔線
+        ("產品系列", data.get('series')),
+        ("款式", data.get('variant')),
+        ("數量", f"{data.get('qty')} 件"),
+        ("備註", data.get('note'))
     ]
     
-    col1_x, col2_x = 60, 420
-    for i, (k, v) in enumerate(contact_infos):
-        curr_x = col1_x if i % 2 == 0 else col2_x
-        draw.text((curr_x, y), f"{k}：", fill="#718096", font=f_norm)
-        draw.text((curr_x + 100, y), str(v), fill="#2d3748", font=f_norm)
-        if i % 2 == 1: y += 40
+    for k, v in fields:
+        if k == "---":
+            y += 10
+            draw.line([(50,y), (750,y)], fill="#eee", width=1)
+            y += 20
+            continue
             
-    y += 20
-    
-    # 區塊 B: 訂購需求
-    draw.text((50, y), "【訂購需求】", fill=header_color, font=f_head)
-    y += 40
-    
-    order_infos = [
-        ("產品系列", data.get('series', '-')),
-        ("款式顏色", data.get('variant', '-')),
-        ("預計數量", f"{data.get('qty', '-')} 件"),
-        ("備註需求", data.get('note', '無'))
-    ]
-    
-    for k, v in order_infos:
-        draw.text((60, y), f"{k}：", fill="#718096", font=f_norm)
-        content_str = str(v)
-        max_char = 28
-        first_line = True
-        for i in range(0, len(content_str), max_char):
-            line = content_str[i:i+max_char]
-            draw.text((160, y), line, fill="#2d3748", font=f_norm)
-            y += 35
-            first_line = False
-        if first_line: y += 35
+        draw.text((60, y), f"【{k}】", fill=c_primary, font=f_m)
+        
+        # 內容換行處理
+        val = str(v) if v else "-"
+        max_char = 22
+        for i in range(0, len(val), max_char):
+            line = val[i:i+max_char]
+            draw.text((250, y), line, fill="#333", font=f_m)
+            y += 40
+        y += 10
 
     # Footer
-    draw.rectangle([(0, h-60), (w, h)], fill="#f7fafc")
-    draw.text((240, h-40), "此單據僅供詢價參考，正式報價以業務回傳為主", fill="#718096", font=f_small)
+    draw.rectangle([(0, h-80), (w, h)], fill="#f8f9fa")
+    draw.text((200, h-50), "此單據僅供詢價，正式報價以業務回傳為主", fill="#999", font=f_s)
+    
     return card
 
-def add_watermark(base, text):
-    wm = Image.new("RGBA", base.size, (0,0,0,0))
-    d = ImageDraw.Draw(wm)
-    w, h = base.size
-    fs = int(h * 0.04)
-    f = get_font_obj(fs)
-    label = f"Promo: {text}"
-    d.rectangle([(w-fs*12, h-fs*3.2), (w, h)], fill=(255,255,255,220))
-    d.text((w-fs*11, h-fs*2.5), label, fill=(255,80,80,255), font=f)
-    d.text((w-fs*11, h-fs*1.2), "Momo Design Studio", fill="#718096", font=get_font_obj(int(fs*0.7)))
-    return Image.alpha_composite(base, wm)
+# ==========================================
+# 6. 介面佈局
+# ==========================================
 
-# ==========================================
-# 6. 側邊欄
-# ==========================================
+# --- 側邊欄：功能選單 ---
 with st.sidebar:
-    st.title("👤 會員中心")
-    if st.session_state["user_role"] == "guest":
-        st.info("訪客模式")
-        with st.expander("登入 / 註冊推廣大使", expanded=True):
-            name = st.text_input("暱稱")
-            phone = st.text_input("手機")
-            is_amb = st.checkbox("我要開啟分潤功能", value=False)
-            if st.button("確認身分", type="primary"):
-                if name:
-                    code = f"{name.upper()}{phone[-3:]}" if phone and is_amb else "MEMBER"
-                    st.session_state.update({"user_role": "member", "user_info": {"name":name, "code":code, "is_ambassador":is_amb}})
-                    st.rerun()
-    else:
-        info = st.session_state["user_info"]
-        st.success(f"Hi, {info['name']}")
-        if info["is_ambassador"]: st.markdown(f"推廣碼: **`{info['code']}`**")
-        if st.button("登出"):
-            st.session_state.update({"user_role": "guest", "user_info": {"name":"", "code":"GUEST", "is_ambassador":False}})
-            st.rerun()
+    st.title("🔧 功能選單")
+    
+    # 1. 管理員登入
+    with st.expander("🔐 管理員後台 (Admin)", expanded=False):
+        admin_pwd = st.text_input("管理密碼", type="password")
+        if admin_pwd == "admin888": # 後台密碼
+            st.success("登入成功")
+            st.markdown("### 👥 會員名單")
+            if db["members"]:
+                df = pd.DataFrame(db["members"])
+                st.dataframe(df, use_container_width=True)
+                st.caption("注意：此為模擬資料，重啟後會消失。")
+            else:
+                st.info("尚無會員資料")
+    
+    # 2. 字型救援
+    with st.expander("🔤 字型救援 (Font Fix)", expanded=False):
+        st.caption("如果詢價單文字變成方塊，請在此上傳電腦裡的 .ttf 字型檔 (如微軟正黑體)")
+        custom_font = st.file_uploader("上傳字型檔", type=["ttf", "otf"])
+        if custom_font:
+            st.session_state["custom_font_bytes"] = custom_font.getvalue()
+            st.success("字型已套用！")
 
-# ==========================================
-# 7. 主畫面
-# ==========================================
-mode_cols = st.columns([2, 1])
-with mode_cols[0]:
-    mode = st.radio("服務模式", ["設計訂製 / 推廣", "公司團體 (詢價)"], horizontal=True, label_visibility="collapsed")
-
-if mode == "公司團體 (詢價)":
-    banner_class, b_title, b_sub = "theme-corp", "Momo 團體訂購中心", "企業制服 · 活動團服 · 專人報價服務"
-    partner_id = "Corporate"
+# --- 主畫面：頂部會員狀態 (手機易讀) ---
+if st.session_state["user_role"] == "member":
+    u_info = st.session_state["user_info"]
+    code_display = f"｜推廣碼：**{u_info['code']}**" if u_info['is_ambassador'] else ""
+    st.markdown(f"""
+        <div class="member-bar">
+            <span>👤 會員：{u_info['name']} {code_display}</span>
+        </div>
+    """, unsafe_allow_html=True)
+    if st.button("登出", key="top_logout"):
+        st.session_state["user_role"] = "guest"
+        st.session_state["user_info"] = {}
+        st.rerun()
 else:
-    banner_class, b_title, b_sub = "theme-default", "Momo 創意設計工坊", "打造專屬商品 · 享受設計樂趣"
-    partner_id = st.session_state["user_info"]["code"] if st.session_state["user_role"] == "member" and st.session_state["user_info"]["is_ambassador"] else st.session_state["user_info"]["name"] or "GUEST"
+    # 未登入：顯示註冊/登入區塊
+    with st.expander("🚀 會員登入 / 註冊推廣大使 (點擊展開)", expanded=True):
+        c1, c2 = st.columns(2)
+        with c1:
+            r_name = st.text_input("姓名/暱稱")
+            r_phone = st.text_input("手機號碼")
+        with c2:
+            st.write("") 
+            st.write("")
+            is_amb = st.checkbox("我要開啟分潤功能 (成為大使)")
+            
+        if st.button("確認進入", type="primary", use_container_width=True):
+            if r_name and r_phone:
+                # 產生代碼
+                code = f"{r_name.upper()}{r_phone[-3:]}" if is_amb else "MEMBER"
+                
+                # 寫入模擬資料庫 (給後台看)
+                new_member = {
+                    "Name": r_name,
+                    "Phone": r_phone,
+                    "Is_Ambassador": "Yes" if is_amb else "No",
+                    "Code": code,
+                    "Date": str(datetime.date.today())
+                }
+                db["members"].append(new_member)
+                
+                # 更新 Session
+                st.session_state["user_role"] = "member"
+                st.session_state["user_info"] = {"name": r_name, "code": code, "is_ambassador": is_amb}
+                st.rerun()
+            else:
+                st.error("請輸入姓名與電話")
 
-st.markdown(f"""
-    <div class="banner-box {banner_class}">
-        <div class="banner-title">{b_title}</div>
-        <div class="banner-sub">{b_sub}</div>
-    </div>
-""", unsafe_allow_html=True)
+# --- 主畫面：服務模式 ---
+st.markdown("#### 🛍️ 選擇模式")
+mode = st.radio("Mode", ["一般訂製 / 推廣", "公司團體 (詢價)"], horizontal=True, label_visibility="collapsed")
 
-col_preview, col_tools = st.columns([1.6, 1], gap="large")
+# 決定 partner_id (用於浮水印和詢價單)
+current_code = "GUEST"
+if st.session_state["user_role"] == "member":
+    current_code = st.session_state["user_info"]["code"]
 
-# --- 右側工具欄 ---
+# --- 核心操作區 ---
+col_preview, col_tools = st.columns([1.5, 1], gap="medium")
+
 with col_tools:
-    st.markdown('<div class="tools-container">', unsafe_allow_html=True)
-    st.markdown("### 📦 1. 選擇產品")
-    c1, c2 = st.columns(2)
-    with c1: series = st.selectbox("系列", list(PRODUCT_CATALOG.keys()))
-    with c2: variant = st.selectbox("款式", list(PRODUCT_CATALOG[series].keys()))
+    st.markdown("### 1. 產品")
+    c_s, c_v = st.columns(2)
+    with c_s: series = st.selectbox("系列", list(PRODUCT_CATALOG.keys()))
+    with c_v: variant = st.selectbox("款式", list(PRODUCT_CATALOG[series].keys()))
     
     item = PRODUCT_CATALOG[series][variant]
-    price = item.get("price", 0)
-    pos = item.get("positions", {"中":[150,150]})
+    pos_opts = item.get("positions", {"中":[150,150]})
     
-    st.divider()
-    st.markdown("### 🛠️ 2. 設計調整")
+    st.markdown("### 2. 設計")
+    up_file = st.file_uploader("上傳圖案", type=["png","jpg","jpeg"])
     
-    uploaded_file = st.file_uploader("上傳圖片 (PNG/JPG)", type=["png", "jpg", "jpeg"])
-    if uploaded_file:
-        with st.expander("細部參數設定", expanded=True):
-            remove_bg = st.toggle("✨ AI 自動去背", value=False)
-            pos_key = st.selectbox("印製位置", list(pos.keys()))
-            size_val = st.slider("圖案大小", 50, 450, 180)
-            c_x, c_y = st.columns(2)
-            with c_x: off_x = st.slider("↔️ 左右微調", -60, 60, 0)
-            with c_y: off_y = st.slider("↕️ 上下微調", -60, 60, 0)
-            rotate = st.slider("🔄 旋轉角度", -180, 180, 0)
+    if up_file:
+        with st.expander("調整參數", expanded=True):
+            rm_bg = st.toggle("AI 去背")
+            pos_k = st.selectbox("位置", list(pos_opts.keys()))
+            sz = st.slider("大小", 50, 450, 180)
+            ox = st.slider("左右", -60, 60, 0)
+            oy = st.slider("上下", -60, 60, 0)
+            rot = st.slider("旋轉", -180, 180, 0)
     else:
-        pos_key, size_val, off_x, off_y, rotate, remove_bg = list(pos.keys())[0], 150, 0, 0, 0, False
-    st.markdown('</div>', unsafe_allow_html=True)
+        pos_k, sz, ox, oy, rot, rm_bg = list(pos_opts.keys())[0], 150, 0, 0, 0, False
 
-# --- 左側預覽 ---
 with col_preview:
     try:
-        st.markdown('<div style="background:white; padding:20px; border-radius:16px; box-shadow:0 4px 20px rgba(0,0,0,0.06);">', unsafe_allow_html=True)
-        base_img = Image.open(item["image"]).convert("RGBA")
-        final_img = base_img.copy()
+        base = Image.open(item["image"]).convert("RGBA")
+        final = base.copy()
         
-        if uploaded_file:
-            design = Image.open(uploaded_file).convert("RGBA")
-            if remove_bg: design = remove(design)
-            w_rat = size_val / design.width
-            design = design.resize((size_val, int(design.height * w_rat)))
-            if rotate: design = design.rotate(rotate, expand=True)
-            tx, ty = pos[pos_key]
-            final_img.paste(design, (int(tx - design.width/2 + off_x), int(ty - design.height/2 + off_y)), design)
+        if up_file:
+            d = Image.open(up_file).convert("RGBA")
+            if rm_bg: d = remove(d)
+            wr = sz / d.width
+            d = d.resize((sz, int(d.height * wr)))
+            if rot: d = d.rotate(rot, expand=True)
+            tx, ty = pos_opts[pos_k]
+            final.paste(d, (int(tx-d.width/2+ox), int(ty-d.height/2+oy)), d)
         
-        final_view = add_watermark(final_img, partner_id) if mode != "公司團體 (詢價)" else final_img
-        st.image(final_view, use_container_width=True)
-        st.markdown('</div>', unsafe_allow_html=True)
+        # 顯示圖片 (浮水印僅在一般模式顯示)
+        st.image(final, use_container_width=True)
+        
     except Exception as e:
-        st.error(f"圖片載入錯誤: {e}")
+        st.error(f"Error: {e}")
 
 # --- 底部行動區 ---
 with col_tools:
+    st.markdown("---")
+    
     if mode == "公司團體 (詢價)":
-        st.markdown('<div class="tools-container" style="margin-top:20px; border-left:4px solid #0ba360;">', unsafe_allow_html=True)
-        st.markdown("### 📋 3. 填寫詢價資料")
-        
-        nm = st.text_input("單位/公司名稱")
-        cc1, cc2 = st.columns(2)
-        with cc1: contact_person = st.text_input("聯絡人姓名")
-        with cc2: contact_phone = st.text_input("聯絡電話")
-        contact_line = st.text_input("LINE ID (選填)")
-        
-        c_q, c_n = st.columns([1, 2])
-        with c_q: qt = st.number_input("數量", value=20, min_value=1)
-        with c_n: nt = st.text_input("備註")
-        
-        if st.button("📄 生成並下載詢價單", type="primary", use_container_width=True):
-            inquiry_data = {
-                "name": nm or "Guest",
-                "contact": contact_person,
-                "phone": contact_phone,
-                "line": contact_line,
-                "series": series,
-                "variant": variant,
-                "qty": qt,
-                "note": nt
-            }
-            with st.spinner("正在生成詢價單..."):
-                card = generate_inquiry_card(final_img, inquiry_data)
-                buf = io.BytesIO(); card.save(buf, format="PNG")
+        st.markdown("### 3. 詢價資料")
+        with st.container(border=True):
+            in_name = st.text_input("單位名稱")
+            c1, c2 = st.columns(2)
+            with c1: in_contact = st.text_input("聯絡人")
+            with c2: in_phone = st.text_input("電話")
+            in_line = st.text_input("LINE ID")
+            c3, c4 = st.columns([1,2])
+            with c3: in_qty = st.number_input("數量", value=20)
+            with c4: in_note = st.text_input("備註")
             
-            st.success("詢價單已生成！")
-            st.download_button("📥 點擊下載圖片", data=buf.getvalue(), file_name=f"Inquiry_{nm or 'Guest'}.png", mime="image/png", use_container_width=True, type="primary")
-        st.markdown('</div>', unsafe_allow_html=True)
+            if st.button("📄 生成詢價單", type="primary", use_container_width=True):
+                data = {
+                    "name": in_name, "contact": in_contact, "phone": in_phone, 
+                    "line": in_line, "qty": in_qty, "note": in_note,
+                    "series": series, "variant": variant,
+                    "promo_code": current_code # 將推廣碼傳入詢價單
+                }
+                with st.spinner("生成中..."):
+                    card = generate_inquiry(final, data)
+                    buf = io.BytesIO()
+                    card.save(buf, format="PNG")
+                
+                st.success("完成！")
+                st.download_button("📥 下載圖片", data=buf.getvalue(), file_name=f"Inquiry_{in_name}.png", mime="image/png", use_container_width=True, type="primary")
+
     else:
-        st.markdown(f"""
-        <div class="price-card">
-            <div class="price-label">建議售價</div>
-            <div class="price-val"><span class="price-currency">NT$</span>{price}</div>
-        </div>
-        """, unsafe_allow_html=True)
-        buf = io.BytesIO(); final_view.save(buf, format="PNG")
-        if st.session_state["user_role"] == "member" and st.session_state["user_info"]["is_ambassador"]:
-            st.download_button("✨ 下載專屬推廣圖", data=buf.getvalue(), file_name=f"Promo_{partner_id}.png", mime="image/png", type="primary", use_container_width=True)
+        # 一般模式 / 推廣模式
+        st.markdown(f"#### 建議售價：NT$ {item.get('price', 0)}")
+        
+        # 生成浮水印圖
+        wm = Image.new("RGBA", final.size, (0,0,0,0))
+        d_wm = ImageDraw.Draw(wm)
+        fw, fh = final.size
+        f_wm = get_font_obj(int(fh*0.04))
+        
+        # 如果是推廣大使，印出代碼
+        wm_text = f"Promo: {current_code}" if st.session_state["user_info"].get("is_ambassador") else "Momo Design"
+        d_wm.rectangle([(fw-300, fh-80), (fw, fh)], fill=(255,255,255,200))
+        d_wm.text((fw-280, fh-60), wm_text, fill="red", font=f_wm)
+        final_wm = Image.alpha_composite(final, wm)
+        
+        buf = io.BytesIO()
+        final_wm.save(buf, format="PNG")
+        
+        if st.session_state["user_info"].get("is_ambassador"):
+            st.download_button("✨ 下載分潤推廣圖", data=buf.getvalue(), file_name=f"Promo_{current_code}.png", mime="image/png", type="primary", use_container_width=True)
         else:
-            st.download_button("📥 下載設計預覽圖", data=buf.getvalue(), file_name="Design.png", mime="image/png", use_container_width=True)
+            st.download_button("📥 下載設計圖", data=buf.getvalue(), file_name="Design.png", mime="image/png", use_container_width=True)
