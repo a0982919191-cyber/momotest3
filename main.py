@@ -5,13 +5,39 @@ import requests
 import pandas as pd
 from PIL import Image, ImageDraw, ImageFont
 from rembg import remove
-from products import PRODUCT_CATALOG
 import datetime
 import gspread
 from google.oauth2.service_account import Credentials
 
 # ==========================================
-# 1. 全局設定 & 資料庫連線
+# 1. 產品目錄 (已更新檔名)
+# ==========================================
+# 這裡直接設定產品資料，不需額外檔案
+PRODUCT_CATALOG = {
+    "品牌聯名系列": {
+        "MakeWorld 客製棉T (黑)": {
+            "image": "AG21000_Black.png", # 👈 已更新
+            "price": 590,
+            "positions": {
+                "正中間": [300, 400], 
+                "左胸": [450, 250], 
+                "背後大圖": [300, 350]
+            }
+        },
+        "MakeWorld 客製棉T (白)": {
+            "image": "AG21000_white.png", # 👈 已更新
+            "price": 590,
+            "positions": {
+                "正中間": [300, 400], 
+                "左胸": [450, 250], 
+                "背後大圖": [300, 350]
+            }
+        }
+    }
+}
+
+# ==========================================
+# 2. 全局設定 & 資料庫連線
 # ==========================================
 st.set_page_config(page_title="Momo Design Pro", page_icon="💎", layout="wide")
 
@@ -20,11 +46,10 @@ SCOPES = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapi
 @st.cache_resource
 def connect_to_gsheet():
     try:
-        # 讀取 Secrets 裡的設定
         if "gcp_service_account" in st.secrets:
             creds = Credentials.from_service_account_info(st.secrets["gcp_service_account"], scopes=SCOPES)
             gc = gspread.authorize(creds)
-            return gc.open("momo_db") # 請確認您的試算表名稱是 momo_db
+            return gc.open("momo_db")
         return None
     except Exception as e:
         print(f"DB Error: {e}")
@@ -32,13 +57,12 @@ def connect_to_gsheet():
 
 sh = connect_to_gsheet()
 
-# 初始化 Session 狀態
 if "user_role" not in st.session_state: st.session_state["user_role"] = "guest"
 if "user_info" not in st.session_state: st.session_state["user_info"] = {}
 if "site_locked" not in st.session_state: st.session_state["site_locked"] = True
 
 # ==========================================
-# 2. 資料庫寫入函式
+# 3. 資料庫寫入函式
 # ==========================================
 def add_member_to_db(name, phone, code, is_amb):
     if sh:
@@ -60,7 +84,7 @@ def add_order_to_db(data):
     return False
 
 # ==========================================
-# 3. 密碼鎖
+# 4. 密碼鎖
 # ==========================================
 def check_lock():
     if st.session_state["site_locked"]:
@@ -74,28 +98,23 @@ def check_lock():
 check_lock()
 
 # ==========================================
-# 4. 字型設定 (直接讀取 GitHub 檔案)
+# 5. 字型設定 (強制讀取 GitHub 檔案)
 # ==========================================
-# 這裡直接指定檔名，因為我們已經手動上傳了
 FONT_FILE = "NotoSansTC-Regular.ttf"
 
 def get_font(size):
-    """直接讀取同目錄下的字型檔"""
-    try:
+    if os.path.exists(FONT_FILE):
         return ImageFont.truetype(FONT_FILE, size)
-    except:
-        # 萬一真的讀不到，回傳預設 (避免當機，但會變方塊)
-        return ImageFont.load_default()
+    return ImageFont.load_default()
 
 # ==========================================
-# 5. 詢價單生成
+# 6. 詢價單生成
 # ==========================================
 def generate_inquiry(img, data):
     w, h = 800, 1300
     card = Image.new("RGB", (w, h), "white")
     draw = ImageDraw.Draw(card)
     
-    # 這裡確保每一行文字都使用了中文支援的字型
     f_xl, f_l, f_m, f_s = get_font(40), get_font(30), get_font(24), get_font(20)
     
     draw.rectangle([(0,0), (w, 140)], fill="#2c3e50")
@@ -110,7 +129,6 @@ def generate_inquiry(img, data):
     y = 170 + t_h + 50
     draw.line([(50,y), (750,y)], fill="#ddd", width=2); y += 30
     
-    # 顯示推廣碼
     if data.get('promo_code') not in [None, "GUEST"]:
         draw.rectangle([(50, y), (750, y+60)], fill="#fff3cd")
         draw.text((70, y+15), f"★ 分潤代碼：{data.get('promo_code')}", fill="#856404", font=f_l); y += 90
@@ -121,9 +139,7 @@ def generate_inquiry(img, data):
     for k, v in fields:
         if k == "---":
             y+=15; draw.line([(50,y), (750,y)], fill="#eee", width=1); y+=25; continue
-        # 標題
         draw.text((60, y), f"【{k}】", fill="#2c3e50", font=f_m)
-        # 內容 (含自動換行)
         val = str(v) if v else "-"
         for i in range(0, len(val), 22):
             draw.text((250, y), val[i:i+22], fill="#333", font=f_m); y += 40
@@ -134,7 +150,7 @@ def generate_inquiry(img, data):
     return card
 
 # ==========================================
-# 6. 介面
+# 7. 介面邏輯
 # ==========================================
 st.markdown("<style>.stApp{font-family:sans-serif} #MainMenu{visibility:hidden}</style>", unsafe_allow_html=True)
 
@@ -143,10 +159,9 @@ with st.sidebar:
     if st.session_state["user_role"] == "guest":
         with st.expander("登入 / 註冊", expanded=True):
             rn = st.text_input("姓名"); rp = st.text_input("電話"); amb = st.checkbox("開啟分潤")
-            if st.button("確認", type="primary", use_container_width=True):
+            if st.button("確認", type="primary"):
                 if rn and rp:
                     code = f"{rn.upper()}{rp[-3:]}" if amb else "MEMBER"
-                    # 寫入資料庫
                     if sh: 
                         with st.spinner("連線中..."):
                             add_member_to_db(rn, rp, code, amb)
@@ -166,7 +181,11 @@ c1, c2 = st.columns([1.5, 1])
 with c2:
     s = st.selectbox("系列", list(PRODUCT_CATALOG.keys()))
     v = st.selectbox("款式", list(PRODUCT_CATALOG[s].keys()))
-    item = PRODUCT_CATALOG[s][v]; pos = item.get("positions", {"中":[150,150]})
+    item = PRODUCT_CATALOG[s][v]
+    
+    # 圖案位置預設值 (如果目錄裡沒寫)
+    pos = item.get("positions", {"正中間":[300, 400]})
+    
     uf = st.file_uploader("上傳圖案")
     if uf:
         with st.expander("調整", expanded=True):
@@ -176,15 +195,26 @@ with c2:
 
 with c1:
     try:
-        base = Image.open(item["image"]).convert("RGBA"); final = base.copy()
+        # 顯示圖片 (含錯誤偵測)
+        image_path = item["image"]
+        if not os.path.exists(image_path):
+            st.error(f"⚠️ 找不到圖片：{image_path}")
+            st.info(f"請上傳檔名為 {image_path} 的圖片到 GitHub")
+            # 使用空白圖避免當機
+            base = Image.new("RGBA", (600, 800), (240, 240, 240))
+        else:
+            base = Image.open(image_path).convert("RGBA")
+            
+        final = base.copy()
         if uf:
-            d = Image.open(up_file).convert("RGBA"); 
+            d = Image.open(uf).convert("RGBA"); 
             if rb: d = remove(d)
             wr=sz/d.width; d=d.resize((sz,int(d.height*wr))); 
             if rot: d=d.rotate(rot, expand=True)
             tx,ty=pos[pk]; final.paste(d, (int(tx-d.width/2+ox), int(ty-d.height/2+oy)), d)
         st.image(final, use_container_width=True)
-    except: st.error("圖片載入失敗")
+    except Exception as e:
+        st.error(f"Error: {e}")
 
 with c2:
     st.divider()
@@ -194,13 +224,8 @@ with c2:
         inq = st.number_input("數量", value=20); innote = st.text_input("備註")
         if st.button("📄 生成詢價單", type="primary"):
             dt = {"name":inn, "contact":inc, "phone":inp, "line":inl, "qty":inq, "note":innote, "series":s, "variant":v, "promo_code":ccode}
-            
-            # 寫入資料庫
             if sh: 
-                with st.spinner("訂單處理中..."):
-                    add_order_to_db(dt)
-            
-            # 生成圖片
+                with st.spinner("訂單處理中..."): add_order_to_db(dt)
             card = generate_inquiry(final, dt); buf = io.BytesIO(); card.save(buf, format="PNG")
             st.download_button("📥 下載", data=buf.getvalue(), file_name="Inquiry.png", mime="image/png")
             if sh: st.success("✅ 訂單已自動傳送至雲端")
