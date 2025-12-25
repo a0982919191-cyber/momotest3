@@ -9,13 +9,39 @@ import datetime
 import gspread
 from google.oauth2.service_account import Credentials
 
-# --- 關鍵修改：從 products.py 匯入產品目錄 ---
-from products import PRODUCT_CATALOG 
+# ==========================================
+# 0. 產品目錄 (若您有 products.py，請保留 import 並刪除此區塊)
+# ==========================================
+# 這裡模擬您的 products.py 結構，確保阿默的店能開張
+PRODUCT_CATALOG = {
+    "團體服系列": {
+        "吸濕排汗 T-shirt": {
+            "name": "吸濕排汗 T-shirt",
+            "images": {"front": "https://placehold.co/600x800/EEE/31343C.png?text=Front+View", "back": "https://placehold.co/600x800/EEE/31343C.png?text=Back+View"}, # 請換成您的真實圖片路徑
+            "pos_front": {"左胸 (Logo)": {"coords": (400, 250)}, "正中間 (大圖)": {"coords": (300, 400)}},
+            "pos_back": {"背後大圖": {"coords": (300, 300)}, "領口小標": {"coords": (300, 100)}}
+        },
+        "純棉圓領 T-shirt": {
+            "name": "純棉圓領 T-shirt",
+            "images": {"front": "https://placehold.co/600x800/FFF/31343C.png?text=Cotton+Front", "back": "https://placehold.co/600x800/FFF/31343C.png?text=Cotton+Back"},
+            "pos_front": {"正中間": {"coords": (300, 400)}},
+            "pos_back": {"背後大圖": {"coords": (300, 300)}}
+        }
+    },
+    "文創禮品系列": {
+        "客製化帆布袋": {
+            "name": "客製化帆布袋",
+            "images": {"front": "https://placehold.co/600x800/f0e68c/31343C.png?text=Canvas+Bag", "back": "https://placehold.co/600x800/f0e68c/31343C.png?text=Back"},
+            "pos_front": {"正中間": {"coords": (300, 400)}},
+            "pos_back": {}
+        }
+    }
+}
 
 # ==========================================
 # 1. 全局設定 & 資料庫連線
 # ==========================================
-st.set_page_config(page_title="Momo Design Pro", page_icon="💎", layout="wide")
+st.set_page_config(page_title="興彰 x 默默｜線上設計估價", page_icon="👕", layout="wide")
 SCOPES = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
 
 @st.cache_resource
@@ -30,114 +56,55 @@ def connect_to_gsheet():
 
 sh = connect_to_gsheet()
 
+# 初始化狀態
 if "user_role" not in st.session_state: st.session_state["user_role"] = "guest"
 if "user_info" not in st.session_state: st.session_state["user_info"] = {}
-if "site_locked" not in st.session_state: st.session_state["site_locked"] = True
+if "designs" not in st.session_state: st.session_state["designs"] = {} 
 
 # ==========================================
-# 2. 字型處理 (智慧防崩潰)
+# 2. 詢價單生成 (圖片版 - 加入阿默行銷元素)
 # ==========================================
-FONT_SAVE_PATH = "temp_font.ttf" 
-FONT_URL = "https://github.com/google/fonts/raw/main/ofl/notosanstc/NotoSansTC-Regular.ttf"
-
-def get_font(size):
-    font = None
-    if not os.path.exists(FONT_SAVE_PATH) or os.path.getsize(FONT_SAVE_PATH) < 1000000:
-        try:
-            r = requests.get(FONT_URL, timeout=5)
-            if r.status_code == 200:
-                with open(FONT_SAVE_PATH, "wb") as f: f.write(r.content)
-        except: pass
-
-    try:
-        if os.path.exists(FONT_SAVE_PATH):
-            font = ImageFont.truetype(FONT_SAVE_PATH, size)
-    except:
-        try: os.remove(FONT_SAVE_PATH)
-        except: pass
+def generate_inquiry_image(base_img_front, data, design_list_text):
+    w, h = 800, 1200
+    card = Image.new("RGB", (w, h), "white")
     
-    if font is None: font = ImageFont.load_default()
-    return font
-
-# ==========================================
-# 3. 詢價單生成 (底圖套用版)
-# ==========================================
-def generate_inquiry(img, data):
-    w, h = 800, 1200 
-    
-    # 載入底圖 (如果有 template.png)
-    if os.path.exists("template.png"):
-        try:
-            card = Image.open("template.png").convert("RGB").resize((w, h))
-        except:
-            card = Image.new("RGB", (w, h), "white")
-    else:
-        card = Image.new("RGB", (w, h), "white")
-
     draw = ImageDraw.Draw(card)
+    try: font = ImageFont.truetype("arial.ttf", 24)
+    except: font = ImageFont.load_default()
     
-    # 字型設定
-    f_title = get_font(40)
-    f_label = get_font(24)
-    f_text = get_font(22)
-    f_small = get_font(18)
+    # 貼上正面合成圖
+    t_w = 400; ratio = t_w/base_img_front.width; t_h = int(base_img_front.height*ratio)
+    res = base_img_front.resize((t_w, t_h))
+    card.paste(res, ((w-t_w)//2, 50), res if res.mode=='RGBA' else None)
     
-    # 貼上衣服圖案
-    t_w = 400
-    ratio = t_w / img.width
-    t_h = int(img.height * ratio)
-    res = img.resize((t_w, t_h))
-    
-    img_x = (w - t_w) // 2
-    img_y = 150
-    
-    # 白底框 (避免底圖干擾)
-    draw.rectangle([(img_x-10, img_y-10), (img_x+t_w+10, img_y+t_h+10)], fill="white")
-    card.paste(res, (img_x, img_y), res if res.mode=='RGBA' else None)
-    
-    # 填寫文字
-    if not os.path.exists("template.png"):
-        draw.rectangle([(0,0), (w, 120)], fill="#2c3e50")
-        draw.text((30, 40), "Momo Design 詢價單", fill="white", font=f_title)
-    
-    draw.text((600, 60), f"日期: {datetime.date.today()}", fill="#333", font=f_small)
-
-    start_y = 650 
-    line_height = 50
-    
+    # 填寫資料
+    start_y = 550
     fields = [
-        ("訂購單位", data.get('name')),
-        ("聯絡姓名", data.get('contact')),
-        ("聯絡電話", data.get('phone')),
-        ("LINE ID", data.get('line')),
-        ("產品系列", data.get('series')),
-        ("產品款式", data.get('variant')),
-        ("訂購數量", f"{data.get('qty')} 件"),
-        ("備註事項", data.get('note')),
-        ("推廣代碼", data.get('promo_code') if data.get('promo_code') != "GUEST" else "無")
+        f"Momo Design Quote - {datetime.date.today()}",
+        "--------------------------------",
+        f"Client: {data.get('name')} / {data.get('contact')}",
+        f"Product: {data.get('series')} - {data.get('variant')}",
+        f"Qty: {data.get('qty')} pcs",
+        "--------------------------------",
+        "Printing Details:",
     ]
+    fields.extend(design_list_text)
     
-    for label, content in fields:
-        if not os.path.exists("template.png"):
-             draw.line([(50, start_y + 35), (750, start_y + 35)], fill="#ddd", width=1)
+    # ** 行銷植入：阿默的 95 折召喚術 **
+    fields.append("--------------------------------")
+    fields.append("!!! DISCOUNT ALERT !!!")
+    fields.append("Send this image to LINE: @727jxovv")
+    fields.append("To get 5% OFF (95折) immediately!")
+    
+    for line in fields:
+        draw.text((100, start_y), line, fill="#333", font=font)
+        start_y += 35
         
-        draw.text((80, start_y), f"{label}：", fill="#555", font=f_label)
-        draw.text((250, start_y), str(content), fill="black", font=f_text)
-        start_y += line_height
-
     return card
 
 # ==========================================
-# 4. 資料庫寫入
+# 3. 資料庫寫入函式 (保持不變)
 # ==========================================
-def add_member_to_db(name, phone, code, is_amb):
-    if sh:
-        try:
-            sh.worksheet("members").append_row([name, phone, code, "TRUE" if is_amb else "FALSE", str(datetime.date.today())])
-            return True
-        except: return False
-    return False
-
 def add_order_to_db(data):
     if sh:
         try:
@@ -150,97 +117,181 @@ def add_order_to_db(data):
     return False
 
 # ==========================================
-# 5. 介面 & 密碼鎖
+# 4. 介面設計 - 阿默店面裝修
 # ==========================================
-def check_lock():
-    if st.session_state["site_locked"]:
-        st.markdown("<br><h2 style='text-align:center;'>🔒 Momo 內部系統</h2>", unsafe_allow_html=True)
-        c1, c2, c3 = st.columns([1,1,1])
-        with c2:
-            if st.text_input("密碼", type="password", label_visibility="collapsed") == "momo2025":
-                st.session_state["site_locked"] = False
-                st.rerun()
-        st.stop()
-check_lock()
 
-st.markdown("<style>.stApp{font-family:sans-serif} #MainMenu{visibility:hidden}</style>", unsafe_allow_html=True)
+# 移除 check_lock()，因為 Threads 引流需要開放訪問
 
+# --- CSS 美化 ---
+st.markdown("""
+<style>
+    .stApp {background-color: #F5F5F7;}
+    div[data-testid="stSidebar"] {background-color: #FFFFFF;}
+    h1, h2, h3 {font-family: 'Helvetica', sans-serif;}
+    .big-font {font-size:20px !important; font-weight: bold;}
+</style>
+""", unsafe_allow_html=True)
+
+# --- 側邊欄：阿默的櫃台 ---
 with st.sidebar:
-    st.title("👤 會員中心")
-    if st.session_state["user_role"] == "guest":
-        with st.expander("登入 / 註冊", expanded=True):
-            rn = st.text_input("姓名"); rp = st.text_input("電話"); amb = st.checkbox("開啟分潤")
-            if st.button("確認", type="primary"):
-                if rn and rp:
-                    code = f"{rn.upper()}{rp[-3:]}" if amb else "MEMBER"
-                    if sh: 
-                        with st.spinner("連線中..."):
-                            add_member_to_db(rn, rp, code, amb)
-                    st.session_state.update({"user_role":"member", "user_info":{"name":rn, "code":code, "is_ambassador":amb}})
-                    st.rerun()
-    else:
-        u = st.session_state["user_info"]
-        st.success(f"Hi, {u['name']}")
-        if u["is_ambassador"]: st.markdown(f"推廣碼: **`{u['code']}`**")
-        if st.button("登出"): st.session_state.update({"user_role":"guest", "user_info":{}}); st.rerun()
+    # 這裡放上您的職人照片
+    st.image("https://images.unsplash.com/photo-1556740738-b6a63e27c4df?w=300", caption="阿默｜興彰企業") # 之後換成您的照片網址
+    
+    st.markdown("### 👨‍🔧 關於我們")
+    st.info("""
+    **興彰企業 x 默默文創**
+    📍 彰化市中山路一段556巷23號之7
+    專做：團體服 / 班系服 / 禮品
+    """)
+    
+    st.markdown("---")
+    st.success("🆔 **LINE ID: @727jxovv**")
+    st.caption("截圖估價單私訊，享 95 折")
+    
+    st.markdown("---")
+    with st.expander("會員/經銷商登入"):
+        rn = st.text_input("姓名"); rp = st.text_input("電話")
+        if st.button("登入"):
+            st.session_state.update({"user_role":"member", "user_info":{"name":rn, "code":f"{rn[:1]}{rp[-3:]}"}})
+            st.rerun()
 
-st.markdown("#### 🛍️ 選擇模式")
-mode = st.radio("mode", ["一般訂製", "公司團體 (詢價)"], horizontal=True, label_visibility="collapsed")
-ccode = st.session_state["user_info"].get("code", "GUEST")
+# --- 主畫面 ---
+st.title("📝 線上設計 & 自助估價")
+st.caption("🚀 免等業務，30秒預覽你的設計｜興彰企業 x 默默文創")
+
+# 模式選擇
+mode = st.radio("您是？", ["一般訪客 (快速估價)", "公司團體 (詳細訂製)"], horizontal=True)
+ccode = st.session_state["user_info"].get("code", "THREADS_GUEST")
 
 c1, c2 = st.columns([1.5, 1])
+
+# --- 右欄：控制台 ---
 with c2:
-    # --- 這裡開始使用外部匯入的 PRODUCT_CATALOG ---
-    s = st.selectbox("系列", list(PRODUCT_CATALOG.keys()))
+    st.markdown("### 1. 選擇產品")
+    series_list = list(PRODUCT_CATALOG.keys())
+    s = st.selectbox("系列", series_list)
     v = st.selectbox("款式", list(PRODUCT_CATALOG[s].keys()))
     item = PRODUCT_CATALOG[s][v]
     
-    # 讀取位置設定
-    pos = item.get("positions", {"正中間":[300, 400]})
+    st.markdown("---")
+    st.markdown("### 2. 創意設計")
     
-    uf = st.file_uploader("上傳圖案")
-    if uf:
-        with st.expander("調整", expanded=True):
-            rb = st.toggle("去背"); pk = st.selectbox("位置", list(pos.keys())); sz = st.slider("大小",50,450,180)
-            ox = st.slider("X",-60,60,0); oy = st.slider("Y",-60,60,0); rot = st.slider("轉",-180,180,0)
-    else: pk,sz,ox,oy,rot,rb = list(pos.keys())[0],150,0,0,0,False
+    tab_f, tab_b = st.tabs(["👕 正面", "🔄 背面"])
+    
+    # 設計邏輯
+    current_side = "front"
+    current_positions = item["pos_front"]
+    
+    with tab_f:
+        current_side = "front"
+        current_positions = item["pos_front"]
+        st.caption("點選下方位置上傳 Logo")
+        
+    with tab_b:
+        current_side = "back"
+        current_positions = item["pos_back"]
+        st.caption("支援背後大圖與領標")
 
+    if current_positions:
+        pk = st.selectbox("印刷位置", list(current_positions.keys()))
+        design_key = f"{current_side}_{pk}"
+        
+        uf = st.file_uploader(f"上傳圖片到: {pk}", type=["png", "jpg", "jpeg"], key=f"uploader_{design_key}")
+        
+        if uf:
+            img = Image.open(uf).convert("RGBA")
+            st.session_state["designs"][design_key] = st.session_state["designs"].get(design_key, {"img": img, "rb": False, "sz": 150, "rot": 0, "ox": 0, "oy": 0})
+            st.session_state["designs"][design_key]["img"] = img # Update image
+            
+        if design_key in st.session_state["designs"]:
+            d_data = st.session_state["designs"][design_key]
+            with st.expander("🛠 調整圖片參數", expanded=True):
+                d_data["rb"] = st.checkbox("AI 去背", value=d_data["rb"], key=f"rb_{design_key}")
+                d_data["sz"] = st.slider("大小缩放", 50, 400, d_data["sz"], key=f"sz_{design_key}")
+                d_data["rot"] = st.slider("旋轉角度", -180, 180, d_data["rot"], key=f"rot_{design_key}")
+                col_adj1, col_adj2 = st.columns(2)
+                with col_adj1: d_data["ox"] = st.number_input("↔ 左右", -100, 100, d_data["ox"], key=f"ox_{design_key}")
+                with col_adj2: d_data["oy"] = st.number_input("↕ 上下", -100, 100, d_data["oy"], key=f"oy_{design_key}")
+                
+                if st.button("🗑️ 清除此圖", key=f"del_{design_key}"):
+                    del st.session_state["designs"][design_key]
+                    st.rerun()
+    else:
+        st.info("此面無可印刷位置")
+
+# --- 左欄：即時預覽 ---
 with c1:
+    st.markdown(f"#### 👁️ 預覽: {v} ({'正面' if current_side=='front' else '背面'})")
     try:
-        # 檢查圖片是否存在
-        if not os.path.exists(item["image"]):
-             st.error(f"⚠️ 找不到圖片：{item['image']}")
-             if os.path.exists("assets"):
-                 st.caption(f"assets 目錄內容: {os.listdir('assets')}")
-             base = Image.new("RGBA", (600, 800), (240, 240, 240))
+        img_url = item["images"][current_side]
+        # 處理圖片讀取 (支援網址或本地)
+        if img_url.startswith("http"):
+            response = requests.get(img_url, stream=True)
+            base = Image.open(response.raw).convert("RGBA")
+        elif os.path.exists(img_url):
+            base = Image.open(img_url).convert("RGBA")
         else:
-             base = Image.open(item["image"]).convert("RGBA")
+            base = Image.new("RGBA", (600, 800), (240, 240, 240)) # 預設白底
 
         final = base.copy()
-        if uf:
-            d = Image.open(uf).convert("RGBA"); 
-            if rb: d = remove(d)
-            wr=sz/d.width; d=d.resize((sz,int(d.height*wr))); 
-            if rot: d=d.rotate(rot, expand=True)
-            tx,ty=pos[pk]; final.paste(d, (int(tx-d.width/2+ox), int(ty-d.height/2+oy)), d)
-        st.image(final, use_container_width=True)
-    except Exception as e: st.error(f"Error: {e}")
+        
+        # 合成所有圖層
+        for d_key, d_val in st.session_state["designs"].items():
+            d_side, d_pos_name = d_key.split("_", 1)
+            
+            if d_side == current_side:
+                # 取得該面位置設定
+                pos_config = item["pos_front" if current_side == "front" else "pos_back"].get(d_pos_name)
+                
+                if pos_config:
+                    tx, ty = pos_config["coords"]
+                    paste_img = d_val["img"].copy()
+                    if d_val["rb"]: paste_img = remove(paste_img) # 去背
+                    
+                    wr = d_val["sz"] / paste_img.width
+                    paste_img = paste_img.resize((d_val["sz"], int(paste_img.height * wr)))
+                    if d_val["rot"] != 0: paste_img = paste_img.rotate(d_val["rot"], expand=True)
+                    
+                    final_x = int(tx - paste_img.width/2 + d_val["ox"])
+                    final_y = int(ty - paste_img.height/2 + d_val["oy"])
+                    
+                    final.paste(paste_img, (final_x, final_y), paste_img)
 
-with c2:
-    st.divider()
-    if mode == "公司團體 (詢價)":
-        st.markdown("### 詢價資料")
-        inn = st.text_input("單位名稱"); inc = st.text_input("聯絡人"); inp = st.text_input("電話"); inl = st.text_input("LINE")
-        inq = st.number_input("數量", value=20); innote = st.text_input("備註")
-        if st.button("📄 生成詢價單", type="primary"):
-            dt = {"name":inn, "contact":inc, "phone":inp, "line":inl, "qty":inq, "note":innote, "series":s, "variant":v, "promo_code":ccode}
+        st.image(final, use_container_width=True)
+
+    except Exception as e:
+        st.error(f"圖片載入錯誤: {e}")
+
+# --- 下方送出區 (Call to Action) ---
+st.divider()
+st.markdown("### 3. 完成與估價")
+
+with st.container():
+    col_submit1, col_submit2 = st.columns([1, 1])
+    
+    with col_submit1:
+        inn = st.text_input("您的稱呼 / 單位名稱")
+        inq = st.number_input("預計數量", value=30)
+    
+    with col_submit2:
+        st.info("💡 **阿默小提醒**：數量滿 30 件免版費，滿 100 件再打折！")
+        
+        if st.button("🚀 生成詢價單 (領取 95 折)", type="primary", use_container_width=True):
+            design_list = [f"• {k}" for k in st.session_state["designs"].keys()]
+            
+            # 準備資料
+            dt = {"name": inn, "contact": inn, "phone": "Online", "line": "Online", 
+                  "qty": inq, "note": "Threads Lead", "series": s, "variant": v, "promo_code": ccode}
+            
+            # 存入 Google Sheets (若有連線)
             if sh: 
-                with st.spinner("訂單處理中..."): add_order_to_db(dt)
-            with st.spinner("生成圖片中..."):
-                card = generate_inquiry(final, dt)
-                buf = io.BytesIO(); card.save(buf, format="PNG")
-            st.download_button("📥 下載", data=buf.getvalue(), file_name="Inquiry.png", mime="image/png")
-            if sh: st.success("✅ 訂單已自動傳送至雲端")
-    else:
-        buf = io.BytesIO(); final.save(buf, format="PNG")
-        st.download_button("📥 下載圖", data=buf.getvalue(), file_name="Design.png", mime="image/png")
+                add_order_to_db(dt)
+            
+            # 生成圖片
+            receipt_img = generate_inquiry_image(final.convert("RGB"), dt, design_list)
+            
+            st.success("✅ 詢價單已生成！請長按下方圖片儲存，並傳給阿默。")
+            st.image(receipt_img, caption="請截圖此畫面傳 LINE: @727jxovv")
+            
+            # 強力導流按鈕
+            st.link_button("👉 點此開啟 LINE 傳送截圖", "https://line.me/ti/p/~@727jxovv")
