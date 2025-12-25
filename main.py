@@ -10,34 +10,48 @@ import gspread
 from google.oauth2.service_account import Credentials
 
 # ==========================================
-# 1. 全局設定 & 產品目錄讀取
+# 1. 全局設定 & 產品目錄 (含所有新顏色)
 # ==========================================
 st.set_page_config(page_title="興彰 x 默默｜線上設計估價", page_icon="👕", layout="wide")
 
-# --- 嘗試讀取您原本的 products.py ---
-try:
-    from products import PRODUCT_CATALOG
-except ImportError:
-    # 如果找不到檔案，使用包含「顏色設定」的測試資料
-    st.warning("⚠️ 找不到 products.py，目前顯示測試資料。")
-    PRODUCT_CATALOG = {
-        "團體服系列": {
-            "AG21000 吸濕排汗 T-shirt": {
-                "name": "AG21000 吸濕排汗 T-shirt",
-                # [設定 1] 顏色選單
-                "colors": ["白 (White)", "黑 (Black)", "丈青 (Navy)"],
-                # [設定 2] 顏色對應的檔名代碼
-                "color_map": {"白 (White)": "White", "黑 (Black)": "Black", "丈青 (Navy)": "Navy"},
-                # [設定 3] 圖片檔名開頭 (型號)
-                "image_base": "AG21000",
-                # 預設圖片 (當沒選顏色時)
-                "images": {"front": "AG21000_White_front.png", "back": "AG21000_White_back.png"},
-                # 印刷位置座標
-                "pos_front": {"左胸 (Logo)": {"coords": (400, 250)}, "正中間 (大圖)": {"coords": (300, 400)}},
-                "pos_back": {"背後大圖": {"coords": (300, 300)}}
-            }
+# 定義完整的產品與顏色設定
+PRODUCT_CATALOG = {
+    "團體服系列": {
+        "AG21000 吸濕排汗 T-shirt": {
+            "name": "AG21000 吸濕排汗 T-shirt",
+            "image_base": "AG21000",
+            
+            # [新增] 完整的顏色清單 (依照您截圖中的檔名對應)
+            "colors": [
+                "白色 (White)", "黑色 (Black)", "丈青 (Navy)", 
+                "麻灰 (HeatherGray)", "麻黑 (CharcoalGray)", "鐵灰 (SlateGray)",
+                "紅色 (Red)", "酒紅 (Burgundy)", "蜜桃橘 (PeachOrange)", 
+                "黃色 (Yellow)", "琥珀黃 (AmberYellow)", 
+                "寶藍 (RoyalBlue)", "霧藍 (DustyBlue)", "蒂芬妮綠 (TiffanyBlue)",
+                "森林綠 (ForestGreen)", "抹茶綠 (MatchaGreen)", "薄荷綠 (MintGreen)",
+                "卡其 (Khaki)", "奶茶色 (BeigeBrown)", "淺粉 (LightPink)"
+            ],
+            
+            # [新增] 顏色代碼對應表 (左邊是選單顯示，右邊是檔名的一部分)
+            "color_map": {
+                "白色 (White)": "White", "黑色 (Black)": "Black", "丈青 (Navy)": "Navy",
+                "麻灰 (HeatherGray)": "HeatherGray", "麻黑 (CharcoalGray)": "CharcoalGray", "鐵灰 (SlateGray)": "SlateGray",
+                "紅色 (Red)": "Red", "酒紅 (Burgundy)": "Burgundy", "蜜桃橘 (PeachOrange)": "PeachOrange",
+                "黃色 (Yellow)": "Yellow", "琥珀黃 (AmberYellow)": "AmberYellow",
+                "寶藍 (RoyalBlue)": "RoyalBlue", "霧藍 (DustyBlue)": "DustyBlue", "蒂芬妮綠 (TiffanyBlue)": "TiffanyBlue",
+                "森林綠 (ForestGreen)": "ForestGreen", "抹茶綠 (MatchaGreen)": "MatchaGreen", "薄荷綠 (MintGreen)": "MintGreen",
+                "卡其 (Khaki)": "Khaki", "奶茶色 (BeigeBrown)": "BeigeBrown", "淺粉 (LightPink)": "LightPink"
+            },
+            
+            # 預設圖片 (當找不到檔案時的備用)
+            "images": {"front": "AG21000_White_front.png", "back": "AG21000_White_back.png"},
+            
+            # 印刷位置座標
+            "pos_front": {"左胸 (Logo)": {"coords": (400, 250)}, "正中間 (大圖)": {"coords": (300, 400)}},
+            "pos_back": {"背後大圖": {"coords": (300, 300)}}
         }
     }
+}
 
 SCOPES = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
 
@@ -60,7 +74,7 @@ if "designs" not in st.session_state: st.session_state["designs"] = {}
 if "site_locked" not in st.session_state: st.session_state["site_locked"] = True 
 
 # ==========================================
-# 2. 密碼鎖定功能 (隱藏提示版)
+# 2. 密碼鎖定功能
 # ==========================================
 def check_lock():
     if st.session_state["site_locked"]:
@@ -81,7 +95,7 @@ def check_lock():
 check_lock()
 
 # ==========================================
-# 3. 詢價單生成 (含尺寸明細 & 顏色)
+# 3. 詢價單生成
 # ==========================================
 def generate_inquiry_image(base_img_front, data, design_list_text):
     w, h = 800, 1200
@@ -103,7 +117,7 @@ def generate_inquiry_image(base_img_front, data, design_list_text):
         "--------------------------------",
         f"Client: {data.get('name')}",
         f"Product: {data.get('series')} - {data.get('variant')}",
-        f"Color: {data.get('color')}", # 顯示顏色
+        f"Color: {data.get('color')}", 
         f"Total Qty: {data.get('qty')} pcs",
         "--------------------------------",
         "Size Breakdown:",
@@ -131,7 +145,6 @@ def add_order_to_db(data):
     if sh:
         try:
             oid = f"ORD-{datetime.datetime.now().strftime('%Y%m%d%H%M%S')}"
-            # 寫入欄位增加了 color 和 size_breakdown
             sh.worksheet("orders").append_row([
                 oid, data['name'], data['contact'], data['phone'], data['line'], 
                 f"{data['series']}-{data['variant']}-{data['color']}", 
@@ -144,7 +157,7 @@ def add_order_to_db(data):
     return False
 
 # ==========================================
-# 5. 介面設計 - 阿默店面裝修
+# 5. 介面設計
 # ==========================================
 
 st.markdown("""
@@ -157,12 +170,12 @@ st.markdown("""
 
 # --- 側邊欄 ---
 with st.sidebar:
-    # [更換圖片] 請確保 owner.jpg 存在，或是換成網路連結
+    # 顯示大隊長照片
     if os.path.exists("owner.jpg"):
         st.image("owner.jpg", caption="阿默｜興彰企業")
     else:
-        # 備用圖
         st.image("https://placehold.co/300x300?text=Ah-Mo", caption="阿默｜興彰企業")
+        st.caption("請上傳 owner.jpg")
     
     st.markdown("### 👨‍🔧 關於我們")
     st.info("""
@@ -193,10 +206,10 @@ with c2:
     s = st.selectbox("系列", series_list)
     v = st.selectbox("款式", list(PRODUCT_CATALOG[s].keys()))
     
-    # 防呆機制
+    # 這裡使用 .get() 並提供預設值，解決 KeyError: 'pos_front' 問題
     item = PRODUCT_CATALOG.get(s, {}).get(v, {})
     
-    # [新增] 顏色選擇區
+    # 顏色選擇
     color_options = item.get("colors", [])
     selected_color = "Default"
     
@@ -207,22 +220,28 @@ with c2:
         color_code = item.get("color_map", {}).get(selected_color, "")
         base_name = item.get("image_base", "")
         
-        # 組合 PNG 檔名
+        # 組合 PNG/JPG 檔名 (依照您截圖的檔名格式: AG21000_Color_front.png)
         if base_name and color_code:
-            fname_front = f"{base_name}_{color_code}_front.png"
-            fname_back = f"{base_name}_{color_code}_back.png"
+            fname_front = f"{base_name}_{color_code}_front"
+            fname_back = f"{base_name}_{color_code}_back"
             
-            # 檢查檔案是否存在 (防呆)
-            img_front = fname_front if os.path.exists(fname_front) else item.get("images", {}).get("front")
-            img_back = fname_back if os.path.exists(fname_back) else item.get("images", {}).get("back")
+            # 智慧檢查 .png 或 .jpg
+            if os.path.exists(f"{fname_front}.png"): img_front = f"{fname_front}.png"
+            elif os.path.exists(f"{fname_front}.jpg"): img_front = f"{fname_front}.jpg"
+            else: img_front = item.get("images", {}).get("front") # 找不到就用預設
+
+            if os.path.exists(f"{fname_back}.png"): img_back = f"{fname_back}.png"
+            elif os.path.exists(f"{fname_back}.jpg"): img_back = f"{fname_back}.jpg"
+            else: img_back = item.get("images", {}).get("back") # 找不到就用預設
             
-            # 更新本次預覽用的圖片路徑
+            # 更新圖片路徑
             item["images"] = {"front": img_front, "back": img_back}
 
     # --- 尺寸表與數量輸入 ---
     st.markdown("---")
     st.markdown("### 2. 尺寸與數量")
     
+    # 尺寸表顯示
     with st.expander("📏 點此查看尺寸表 (Size Chart)"):
         if os.path.exists("size_chart.png"):
             st.image("size_chart.png") 
@@ -245,7 +264,7 @@ with c2:
     
     tab_f, tab_b = st.tabs(["👕 正面", "🔄 背面"])
     
-    # 設計邏輯
+    # 使用 .get() 避免崩潰
     current_side = "front"
     current_positions = item.get("pos_front", {})
     
@@ -291,7 +310,7 @@ with c1:
         img_dict = item.get("images", {})
         img_url = img_dict.get(current_side, "")
         
-        # 圖片讀取邏輯 (本地優先 -> 網址 -> 灰底)
+        # 圖片讀取邏輯
         if img_url and os.path.exists(img_url): 
             base = Image.open(img_url).convert("RGBA")
         elif img_url and img_url.startswith("http"): 
@@ -307,7 +326,7 @@ with c1:
         for d_key, d_val in st.session_state["designs"].items():
             d_side, d_pos_name = d_key.split("_", 1)
             if d_side == current_side:
-                # 取得當前面的位置設定
+                # 安全獲取位置設定
                 pos_source = item.get("pos_front", {}) if current_side == "front" else item.get("pos_back", {})
                 pos_config = pos_source.get(d_pos_name)
                 
@@ -352,13 +371,13 @@ with st.container():
             else:
                 design_list = [f"• {k}" for k in st.session_state["designs"].keys()]
                 
-                # 整理尺寸字串 (例如: S*2, M*5)
+                # 整理尺寸字串
                 size_str_list = [f"{k}*{v}" for k, v in size_inputs.items() if v > 0]
                 size_breakdown = ", ".join(size_str_list)
                 
                 dt = {"name": inn, "contact": inn, "phone": "Online", "line": "Online", 
                       "qty": total_qty, "size_breakdown": size_breakdown,
-                      "color": selected_color, # 紀錄顏色
+                      "color": selected_color,
                       "note": "Threads Lead", "series": s, "variant": v, "promo_code": ccode}
                 
                 if sh: add_order_to_db(dt)
