@@ -26,13 +26,13 @@ def get_path(filename):
 # 定義產品目錄
 PRODUCT_CATALOG = {
     "團體服系列": {
-        "AG21000 吸濕排汗 T-shirt": {
-            "name": "AG21000 吸濕排汗 T-shirt",
+        "AG21000 重磅棉T ": {
+            "name": "AG21000 重磅棉T ",
             "image_base": "AG21000",
             
             # 顏色清單
             "colors": [
-                "白色 (White)", "黑色 (Black)", "丈青 (Navy)", 
+                "白色 (White)", "黑色 (Black)", "藏青 (Navy)", 
                 "麻灰 (HeatherGray)", "麻黑 (CharcoalGray)", "鐵灰 (SlateGray)",
                 "紅色 (Red)", "酒紅 (Burgundy)", "蜜桃橘 (PeachOrange)", 
                 "黃色 (Yellow)", "琥珀黃 (AmberYellow)", 
@@ -411,3 +411,4 @@ with st.container():
                 st.success("✅ 詢價單已生成！")
                 st.image(receipt_img, caption="請截圖此畫面傳 LINE: @727jxovv")
                 st.link_button("👉 點此開啟 LINE 傳送截圖", "https://line.me/ti/p/~@727jxovv")
+
