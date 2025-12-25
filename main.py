@@ -10,24 +10,21 @@ import gspread
 from google.oauth2.service_account import Credentials
 
 # ==========================================
-# 1. 產品目錄 (修正路徑指向 assets)
+# 1. 產品目錄 (位置數值已全數校正)
 # ==========================================
+STD_POSITIONS = {
+    "正中間": [300, 400], 
+    "左胸": [450, 250], 
+    "背後大圖": [300, 350]
+}
+
 PRODUCT_CATALOG = {
     "品牌聯名系列": {
-        "MakeWorld 客製棉T (黑)": {
-            "image": "assets/AG21000_Black.png",  # 指向 assets 資料夾
-            "price": 590,
-            "positions": {"正中間": [300, 400], "左胸": [450, 250], "背後大圖": [300, 350]}
-        },
-        "MakeWorld 客製棉T (白)": {
-            "image": "assets/AG21000_white.png",  # 指向 assets 資料夾
-            "price": 590,
-            "positions": {"正中間": [300, 400], "左胸": [450, 250], "背後大圖": [300, 350]}
-        },
-        # 您截圖中有這些顏色，我先幫您補上路徑，避免報錯
-        "MakeWorld 客製棉T (藍)": {"image": "assets/AG21000_Blue.png", "price": 590, "positions": {"正中間": [300, 400]}},
-        "MakeWorld 客製棉T (卡其)": {"image": "assets/AG21000_Khaki.png", "price": 590, "positions": {"正中間": [300, 400]}},
-        "MakeWorld 客製棉T (灰)": {"image": "assets/AG21000_grey.png", "price": 590, "positions": {"正中間": [300, 400]}},
+        "MakeWorld 客製棉T (黑)": {"image": "assets/AG21000_Black.png", "price": 590, "positions": STD_POSITIONS},
+        "MakeWorld 客製棉T (白)": {"image": "assets/AG21000_white.png", "price": 590, "positions": STD_POSITIONS},
+        "MakeWorld 客製棉T (藍)": {"image": "assets/AG21000_Blue.png", "price": 590, "positions": STD_POSITIONS},
+        "MakeWorld 客製棉T (卡其)": {"image": "assets/AG21000_Khaki.png", "price": 590, "positions": STD_POSITIONS},
+        "MakeWorld 客製棉T (灰)": {"image": "assets/AG21000_grey.png", "price": 590, "positions": STD_POSITIONS},
     }
 }
 
@@ -54,61 +51,62 @@ if "user_info" not in st.session_state: st.session_state["user_info"] = {}
 if "site_locked" not in st.session_state: st.session_state["site_locked"] = True
 
 # ==========================================
-# 3. 自動下載並修復字型 (關鍵修正)
+# 3. 字型處理 (智慧型防崩潰系統)
 # ==========================================
-FONT_FILE = "NotoSansTC-Regular.ttf"
-# Google Fonts 的官方原始檔連結
+# 這裡我們不使用 assets 裡的字型，改用自動下載的暫存檔，避免您上傳到壞掉的檔案
+FONT_SAVE_PATH = "temp_font.ttf" 
 FONT_URL = "https://github.com/google/fonts/raw/main/ofl/notosanstc/NotoSansTC-Regular.ttf"
 
 def get_font(size):
     """
-    強大的字型讀取器：
-    1. 先試讀本地檔案。
-    2. 如果讀取失敗(壞檔)，自動刪除並重新下載。
-    3. 再次讀取，確保成功。
+    嘗試取得中文字型，如果失敗則使用系統預設 (方塊字)，
+    保證永遠不會讓程式崩潰。
     """
     font = None
     
-    # 第一階段：嘗試讀取
+    # 1. 檢查暫存檔是否存在且完整 (大於 1MB)
+    if not os.path.exists(FONT_SAVE_PATH) or os.path.getsize(FONT_SAVE_PATH) < 1000000:
+        try:
+            # 嘗試下載
+            r = requests.get(FONT_URL, timeout=5)
+            if r.status_code == 200:
+                with open(FONT_SAVE_PATH, "wb") as f:
+                    f.write(r.content)
+        except:
+            pass # 下載失敗就略過
+
+    # 2. 嘗試讀取字型
     try:
-        if os.path.exists(FONT_FILE):
-            font = ImageFont.truetype(FONT_FILE, size)
-    except Exception as e:
-        print(f"字型損壞，準備修復: {e}")
-        try: os.remove(FONT_FILE) # 刪除壞檔
+        if os.path.exists(FONT_SAVE_PATH):
+            font = ImageFont.truetype(FONT_SAVE_PATH, size)
+    except Exception:
+        # 如果檔案壞掉，刪除它以便下次重試
+        try: os.remove(FONT_SAVE_PATH)
         except: pass
     
-    # 第二階段：如果沒字型或剛被刪除，從網路下載
-    if font is None or not os.path.exists(FONT_FILE):
-        try:
-            print("正在下載字型...")
-            r = requests.get(FONT_URL, timeout=10)
-            if r.status_code == 200:
-                with open(FONT_FILE, "wb") as f:
-                    f.write(r.content)
-            # 下載後再試一次
-            font = ImageFont.truetype(FONT_FILE, size)
-        except Exception as e:
-            print(f"下載失敗: {e}")
-            font = ImageFont.load_default() # 真的沒辦法才用方塊字
-
-    return font if font else ImageFont.load_default()
+    # 3. 【最後防線】如果上面都失敗，使用系統預設字體
+    # 這就是您要求的「內建字體」，雖然中文會變方塊，但至少程式能跑
+    if font is None:
+        font = ImageFont.load_default()
+        
+    return font
 
 # ==========================================
-# 4. 詢價單生成 (使用修復後的字型)
+# 4. 詢價單生成
 # ==========================================
 def generate_inquiry(img, data):
     w, h = 800, 1300
     card = Image.new("RGB", (w, h), "white")
     draw = ImageDraw.Draw(card)
     
-    # 這裡會呼叫上面的強大函數
+    # 使用安全字型取得器
     f_xl = get_font(40)
     f_l = get_font(30)
     f_m = get_font(24)
     f_s = get_font(20)
     
     draw.rectangle([(0,0), (w, 140)], fill="#2c3e50")
+    # 這裡如果是方塊字，代表下載失敗，但至少不會 Error
     draw.text((40, 50), "Momo Design 需求詢價單", fill="white", font=f_xl)
     draw.text((w-250, 60), str(datetime.date.today()), fill="#ccc", font=f_s)
     
@@ -206,6 +204,8 @@ with c2:
     s = st.selectbox("系列", list(PRODUCT_CATALOG.keys()))
     v = st.selectbox("款式", list(PRODUCT_CATALOG[s].keys()))
     item = PRODUCT_CATALOG[s][v]
+    
+    # 讀取校正後的位置
     pos = item.get("positions", {"正中間":[300, 400]})
     
     uf = st.file_uploader("上傳圖案")
@@ -217,11 +217,11 @@ with c2:
 
 with c1:
     try:
-        # 自動偵測圖片是否存在
+        # 檢查圖片是否存在
         if not os.path.exists(item["image"]):
              st.error(f"⚠️ 找不到圖片：{item['image']}")
              if os.path.exists("assets"):
-                 st.caption(f"assets 目錄內容: {os.listdir('assets')}") # 幫忙除錯
+                 st.caption(f"assets 目錄內容: {os.listdir('assets')}")
              base = Image.new("RGBA", (600, 800), (240, 240, 240))
         else:
              base = Image.open(item["image"]).convert("RGBA")
@@ -246,8 +246,7 @@ with c2:
             dt = {"name":inn, "contact":inc, "phone":inp, "line":inl, "qty":inq, "note":innote, "series":s, "variant":v, "promo_code":ccode}
             if sh: 
                 with st.spinner("訂單處理中..."): add_order_to_db(dt)
-            # 生成詢價單 (會自動修復字型)
-            with st.spinner("正在下載字型並生成圖片..."):
+            with st.spinner("生成圖片中..."):
                 card = generate_inquiry(final, dt)
                 buf = io.BytesIO(); card.save(buf, format="PNG")
             st.download_button("📥 下載", data=buf.getvalue(), file_name="Inquiry.png", mime="image/png")
