@@ -10,18 +10,27 @@ import gspread
 from google.oauth2.service_account import Credentials
 
 # ==========================================
-# 1. 全局設定 & 產品目錄 (含所有新顏色)
+# 1. 全局設定 & 路徑配置
 # ==========================================
 st.set_page_config(page_title="興彰 x 默默｜線上設計估價", page_icon="👕", layout="wide")
 
-# 定義完整的產品與顏色設定
+# [設定] 圖片資料夾名稱 (如果您放在 assets 資料夾，這裡就填 "assets"，若在根目錄則留空 "")
+ASSETS_DIR = "assets"
+
+# 輔助函式：自動組合路徑 (自動處理 assets/filename)
+def get_path(filename):
+    if ASSETS_DIR:
+        return os.path.join(ASSETS_DIR, filename)
+    return filename
+
+# 定義產品目錄
 PRODUCT_CATALOG = {
     "團體服系列": {
         "AG21000 吸濕排汗 T-shirt": {
             "name": "AG21000 吸濕排汗 T-shirt",
             "image_base": "AG21000",
             
-            # [新增] 完整的顏色清單 (依照您截圖中的檔名對應)
+            # 顏色清單
             "colors": [
                 "白色 (White)", "黑色 (Black)", "丈青 (Navy)", 
                 "麻灰 (HeatherGray)", "麻黑 (CharcoalGray)", "鐵灰 (SlateGray)",
@@ -32,7 +41,7 @@ PRODUCT_CATALOG = {
                 "卡其 (Khaki)", "奶茶色 (BeigeBrown)", "淺粉 (LightPink)"
             ],
             
-            # [新增] 顏色代碼對應表 (左邊是選單顯示，右邊是檔名的一部分)
+            # 顏色代碼對應
             "color_map": {
                 "白色 (White)": "White", "黑色 (Black)": "Black", "丈青 (Navy)": "Navy",
                 "麻灰 (HeatherGray)": "HeatherGray", "麻黑 (CharcoalGray)": "CharcoalGray", "鐵灰 (SlateGray)": "SlateGray",
@@ -43,8 +52,11 @@ PRODUCT_CATALOG = {
                 "卡其 (Khaki)": "Khaki", "奶茶色 (BeigeBrown)": "BeigeBrown", "淺粉 (LightPink)": "LightPink"
             },
             
-            # 預設圖片 (當找不到檔案時的備用)
-            "images": {"front": "AG21000_White_front.png", "back": "AG21000_White_back.png"},
+            # 預設圖片 (使用 get_path 處理路徑)
+            "images": {
+                "front": get_path("AG21000_White_front.png"), 
+                "back": get_path("AG21000_White_back.png")
+            },
             
             # 印刷位置座標
             "pos_front": {"左胸 (Logo)": {"coords": (400, 250)}, "正中間 (大圖)": {"coords": (300, 400)}},
@@ -170,12 +182,15 @@ st.markdown("""
 
 # --- 側邊欄 ---
 with st.sidebar:
-    # 顯示大隊長照片
-    if os.path.exists("owner.jpg"):
-        st.image("owner.jpg", caption="阿默｜興彰企業")
+    # [修正] 從 assets 資料夾讀取大隊長照片
+    owner_path = get_path("owner.jpg")
+    
+    if os.path.exists(owner_path):
+        st.image(owner_path, caption="阿默｜興彰企業")
     else:
         st.image("https://placehold.co/300x300?text=Ah-Mo", caption="阿默｜興彰企業")
-        st.caption("請上傳 owner.jpg")
+        # 僅在開發時顯示提示，避免客戶看到
+        # st.caption(f"請確認 {owner_path} 是否存在")
     
     st.markdown("### 👨‍🔧 關於我們")
     st.info("""
@@ -206,7 +221,7 @@ with c2:
     s = st.selectbox("系列", series_list)
     v = st.selectbox("款式", list(PRODUCT_CATALOG[s].keys()))
     
-    # 這裡使用 .get() 並提供預設值，解決 KeyError: 'pos_front' 問題
+    # 使用 .get() 並提供預設值
     item = PRODUCT_CATALOG.get(s, {}).get(v, {})
     
     # 顏色選擇
@@ -216,23 +231,29 @@ with c2:
     if color_options:
         selected_color = st.selectbox("顏色", color_options)
         
-        # 取得顏色代碼 (例如 "White")
+        # 取得顏色代碼
         color_code = item.get("color_map", {}).get(selected_color, "")
         base_name = item.get("image_base", "")
         
-        # 組合 PNG/JPG 檔名 (依照您截圖的檔名格式: AG21000_Color_front.png)
+        # [修正] 組合路徑時加入 assets 資料夾
         if base_name and color_code:
-            fname_front = f"{base_name}_{color_code}_front"
-            fname_back = f"{base_name}_{color_code}_back"
+            # 原始檔名 (不含路徑)
+            raw_fname_front = f"{base_name}_{color_code}_front"
+            raw_fname_back = f"{base_name}_{color_code}_back"
+            
+            # 加上 assets 路徑的完整路徑
+            path_front = get_path(raw_fname_front)
+            path_back = get_path(raw_fname_back)
             
             # 智慧檢查 .png 或 .jpg
-            if os.path.exists(f"{fname_front}.png"): img_front = f"{fname_front}.png"
-            elif os.path.exists(f"{fname_front}.jpg"): img_front = f"{fname_front}.jpg"
-            else: img_front = item.get("images", {}).get("front") # 找不到就用預設
+            # 我們檢查完整的 path + 副檔名
+            if os.path.exists(f"{path_front}.png"): img_front = f"{path_front}.png"
+            elif os.path.exists(f"{path_front}.jpg"): img_front = f"{path_front}.jpg"
+            else: img_front = item.get("images", {}).get("front") 
 
-            if os.path.exists(f"{fname_back}.png"): img_back = f"{fname_back}.png"
-            elif os.path.exists(f"{fname_back}.jpg"): img_back = f"{fname_back}.jpg"
-            else: img_back = item.get("images", {}).get("back") # 找不到就用預設
+            if os.path.exists(f"{path_back}.png"): img_back = f"{path_back}.png"
+            elif os.path.exists(f"{path_back}.jpg"): img_back = f"{path_back}.jpg"
+            else: img_back = item.get("images", {}).get("back") 
             
             # 更新圖片路徑
             item["images"] = {"front": img_front, "back": img_back}
@@ -241,12 +262,14 @@ with c2:
     st.markdown("---")
     st.markdown("### 2. 尺寸與數量")
     
-    # 尺寸表顯示
+    # [修正] 從 assets 資料夾讀取尺寸表
+    size_chart_path = get_path("size_chart.png")
+    
     with st.expander("📏 點此查看尺寸表 (Size Chart)"):
-        if os.path.exists("size_chart.png"):
-            st.image("size_chart.png") 
+        if os.path.exists(size_chart_path):
+            st.image(size_chart_path) 
         else:
-            st.caption("⚠️ 請上傳 size_chart.png")
+            st.caption(f"⚠️ 找不到尺寸表: {size_chart_path}")
 
     sizes = ["S", "M", "L", "XL", "2XL", "3XL", "4XL", "5XL"]
     size_inputs = {}
@@ -264,7 +287,6 @@ with c2:
     
     tab_f, tab_b = st.tabs(["👕 正面", "🔄 背面"])
     
-    # 使用 .get() 避免崩潰
     current_side = "front"
     current_positions = item.get("pos_front", {})
     
@@ -318,7 +340,9 @@ with c1:
             base = Image.open(response.raw).convert("RGBA")
         else:
             base = Image.new("RGBA", (600, 800), (240, 240, 240))
-            if img_url: st.warning(f"找不到圖片: {img_url}")
+            if img_url: 
+                # 除錯用提示 (只在找不到時顯示)
+                pass 
 
         final = base.copy()
         
