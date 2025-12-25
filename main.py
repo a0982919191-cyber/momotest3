@@ -10,13 +10,13 @@ import gspread
 from google.oauth2.service_account import Credentials
 
 # ==========================================
-# 1. 產品目錄 (已更新檔名)
+# 1. 產品目錄 (修正路徑)
 # ==========================================
-# 這裡直接設定產品資料，不需額外檔案
+# 注意：您的圖片在 assets 資料夾內，所以要加 assets/
 PRODUCT_CATALOG = {
     "品牌聯名系列": {
         "MakeWorld 客製棉T (黑)": {
-            "image": "AG21000_Black.png", # 👈 已更新
+            "image": "assets/AG21000_Black.png",  # 👈 修正路徑
             "price": 590,
             "positions": {
                 "正中間": [300, 400], 
@@ -25,7 +25,7 @@ PRODUCT_CATALOG = {
             }
         },
         "MakeWorld 客製棉T (白)": {
-            "image": "AG21000_white.png", # 👈 已更新
+            "image": "assets/AG21000_white.png",  # 👈 修正路徑
             "price": 590,
             "positions": {
                 "正中間": [300, 400], 
@@ -98,13 +98,21 @@ def check_lock():
 check_lock()
 
 # ==========================================
-# 5. 字型設定 (強制讀取 GitHub 檔案)
+# 5. 字型設定 (防崩潰版)
 # ==========================================
 FONT_FILE = "NotoSansTC-Regular.ttf"
 
 def get_font(size):
-    if os.path.exists(FONT_FILE):
-        return ImageFont.truetype(FONT_FILE, size)
+    """
+    嘗試讀取中文字型，如果檔案壞掉或讀取失敗，
+    自動切換回預設字型，防止 App 崩潰。
+    """
+    try:
+        if os.path.exists(FONT_FILE):
+            return ImageFont.truetype(FONT_FILE, size)
+    except Exception:
+        pass # 如果讀取失敗 (例如 unknown file format)，就忽略，使用下方預設值
+        
     return ImageFont.load_default()
 
 # ==========================================
@@ -183,7 +191,6 @@ with c2:
     v = st.selectbox("款式", list(PRODUCT_CATALOG[s].keys()))
     item = PRODUCT_CATALOG[s][v]
     
-    # 圖案位置預設值 (如果目錄裡沒寫)
     pos = item.get("positions", {"正中間":[300, 400]})
     
     uf = st.file_uploader("上傳圖案")
@@ -195,12 +202,17 @@ with c2:
 
 with c1:
     try:
-        # 顯示圖片 (含錯誤偵測)
+        # 顯示圖片 (含除錯訊息)
         image_path = item["image"]
         if not os.path.exists(image_path):
             st.error(f"⚠️ 找不到圖片：{image_path}")
-            st.info(f"請上傳檔名為 {image_path} 的圖片到 GitHub")
-            # 使用空白圖避免當機
+            # 列出目錄下的檔案，幫忙除錯
+            if os.path.exists("assets"):
+                files = os.listdir("assets")
+                st.caption(f"assets 資料夾內的檔案有：{files}")
+            else:
+                st.caption("⚠️ 找不到 assets 資料夾，請確認 GitHub 結構。")
+                
             base = Image.new("RGBA", (600, 800), (240, 240, 240))
         else:
             base = Image.open(image_path).convert("RGBA")
