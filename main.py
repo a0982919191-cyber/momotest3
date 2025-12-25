@@ -10,7 +10,7 @@ import gspread
 from google.oauth2.service_account import Credentials
 
 # ==========================================
-# 1. 全局設定 & 嘗試匯入產品目錄
+# 1. 全局設定 & 產品目錄讀取
 # ==========================================
 st.set_page_config(page_title="興彰 x 默默｜線上設計估價", page_icon="👕", layout="wide")
 
@@ -18,7 +18,8 @@ st.set_page_config(page_title="興彰 x 默默｜線上設計估價", page_icon=
 try:
     from products import PRODUCT_CATALOG
 except ImportError:
-    # 萬一讀不到檔案，才使用這個備用目錄 (避免報錯)
+    # 萬一讀不到檔案，使用這個備用目錄 (避免報錯)
+    # 這裡的結構已經統一，避免 KeyError
     st.warning("⚠️ 找不到 products.py，目前顯示測試資料。請確認檔案是否上傳。")
     PRODUCT_CATALOG = {
         "團體服系列": {
@@ -52,7 +53,7 @@ if "designs" not in st.session_state: st.session_state["designs"] = {}
 if "site_locked" not in st.session_state: st.session_state["site_locked"] = True # 預設上鎖
 
 # ==========================================
-# 2. 密碼鎖定功能 (新增回來)
+# 2. 密碼鎖定功能 (已隱藏提示)
 # ==========================================
 def check_lock():
     if st.session_state["site_locked"]:
@@ -60,17 +61,19 @@ def check_lock():
         col1, col2, col3 = st.columns([1, 2, 1])
         with col2:
             st.markdown("<h2 style='text-align:center;'>🔒 網站維護中</h2>", unsafe_allow_html=True)
-            st.caption("目前網站進行內部調整，請輸入密碼進入 (預設: momo2025)")
+            # 這裡已經把 (預設: momo2025) 刪除了
+            st.caption("目前網站進行內部調整，請輸入密碼進入")
             pwd = st.text_input("輸入密碼", type="password", label_visibility="collapsed")
             if st.button("解鎖登入", type="primary", use_container_width=True):
-                if pwd == "momo2025": # 您可以在此修改密碼
+                # 這裡設定您的密碼
+                if pwd == "momo2025": 
                     st.session_state["site_locked"] = False
                     st.rerun()
                 else:
                     st.error("密碼錯誤")
-        st.stop() # 停止執行下方程式碼
+        st.stop() 
 
-# 執行檢查 (必須放在最前面)
+# 執行檢查
 check_lock()
 
 # ==========================================
@@ -102,7 +105,6 @@ def generate_inquiry_image(base_img_front, data, design_list_text):
     ]
     fields.extend(design_list_text)
     
-    # 阿默的 95 折召喚術
     fields.append("--------------------------------")
     fields.append("!!! DISCOUNT ALERT !!!")
     fields.append("Send this image to LINE: @727jxovv")
@@ -143,7 +145,7 @@ st.markdown("""
 
 # --- 側邊欄：阿默的櫃台 ---
 with st.sidebar:
-    # 這裡記得換回您的職人照片網址
+    # 這裡放您的職人照片
     st.image("https://images.unsplash.com/photo-1556740738-b6a63e27c4df?w=300", caption="阿默｜興彰企業") 
     
     st.markdown("### 👨‍🔧 關於我們")
@@ -156,7 +158,6 @@ with st.sidebar:
     st.markdown("---")
     st.success("🆔 **LINE ID: @727jxovv**")
     
-    # 重新上鎖按鈕 (方便測試用)
     if st.button("🔒 鎖定網站"):
         st.session_state["site_locked"] = True
         st.rerun()
@@ -176,6 +177,8 @@ with c2:
     series_list = list(PRODUCT_CATALOG.keys())
     s = st.selectbox("系列", series_list)
     v = st.selectbox("款式", list(PRODUCT_CATALOG[s].keys()))
+    
+    # 取得產品資料 (加入防呆機制，避免 KeyError)
     item = PRODUCT_CATALOG[s][v]
     
     st.markdown("---")
@@ -185,18 +188,26 @@ with c2:
     
     # 設計邏輯
     current_side = "front"
-    current_positions = item["pos_front"]
+    # 防呆：如果資料裡沒寫 pos_front，就給一個空字典，這樣程式不會當掉
+    current_positions = item.get("pos_front", {})
     
     with tab_f:
         current_side = "front"
-        current_positions = item["pos_front"]
-        st.caption("點選下方位置上傳 Logo")
+        current_positions = item.get("pos_front", {})
+        if not current_positions:
+            st.info("此產品正面無可編輯位置")
+        else:
+            st.caption("點選下方位置上傳 Logo")
         
     with tab_b:
         current_side = "back"
-        current_positions = item["pos_back"]
-        st.caption("支援背後大圖與領標")
+        current_positions = item.get("pos_back", {})
+        if not current_positions:
+            st.info("此產品背面無可編輯位置")
+        else:
+            st.caption("支援背後大圖與領標")
 
+    # 只有當該面有位置設定時，才顯示上傳介面
     if current_positions:
         pk = st.selectbox("印刷位置", list(current_positions.keys()))
         design_key = f"{current_side}_{pk}"
@@ -205,7 +216,6 @@ with c2:
         
         if uf:
             img = Image.open(uf).convert("RGBA")
-            # 儲存圖片到 Session
             st.session_state["designs"][design_key] = st.session_state["designs"].get(design_key, {"img": img, "rb": False, "sz": 150, "rot": 0, "ox": 0, "oy": 0})
             st.session_state["designs"][design_key]["img"] = img 
             
@@ -222,24 +232,27 @@ with c2:
                 if st.button("🗑️ 清除此圖", key=f"del_{design_key}"):
                     del st.session_state["designs"][design_key]
                     st.rerun()
-    else:
-        st.info("此面無可印刷位置")
 
 # --- 左欄：即時預覽 ---
 with c1:
     st.markdown(f"#### 👁️ 預覽: {v} ({'正面' if current_side=='front' else '背面'})")
     try:
-        img_url = item["images"][current_side]
+        # 防呆：確保 images key 存在
+        img_dict = item.get("images", {})
+        img_url = img_dict.get(current_side, "")
         
-        # === 圖片讀取邏輯 (本地優先，再來才是網路) ===
-        if os.path.exists(img_url): # 1. 檢查是不是本地檔案
-            base = Image.open(img_url).convert("RGBA")
-        elif img_url.startswith("http"): # 2. 檢查是不是網址
-            response = requests.get(img_url, stream=True)
-            base = Image.open(response.raw).convert("RGBA")
-        else: # 3. 都沒有就用灰底白圖
+        if not img_url:
+            st.warning("⚠️ 此面無預覽圖")
             base = Image.new("RGBA", (600, 800), (240, 240, 240))
-            st.warning(f"找不到圖片: {img_url}")
+        else:
+            if os.path.exists(img_url): 
+                base = Image.open(img_url).convert("RGBA")
+            elif img_url.startswith("http"): 
+                response = requests.get(img_url, stream=True)
+                base = Image.open(response.raw).convert("RGBA")
+            else:
+                base = Image.new("RGBA", (600, 800), (240, 240, 240))
+                st.warning(f"找不到圖片: {img_url}")
 
         final = base.copy()
         
@@ -249,14 +262,13 @@ with c1:
             
             if d_side == current_side:
                 # 取得該面位置設定
-                # 注意：這裡要判斷現在是正面還是背面，來取用正確的座標設定
-                pos_source = item["pos_front"] if current_side == "front" else item["pos_back"]
+                pos_source = item.get("pos_front", {}) if current_side == "front" else item.get("pos_back", {})
                 pos_config = pos_source.get(d_pos_name)
                 
                 if pos_config:
                     tx, ty = pos_config["coords"]
                     paste_img = d_val["img"].copy()
-                    if d_val["rb"]: paste_img = remove(paste_img) # 去背
+                    if d_val["rb"]: paste_img = remove(paste_img) 
                     
                     wr = d_val["sz"] / paste_img.width
                     paste_img = paste_img.resize((d_val["sz"], int(paste_img.height * wr)))
