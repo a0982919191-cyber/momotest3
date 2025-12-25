@@ -8,16 +8,44 @@ from rembg import remove
 from products import PRODUCT_CATALOG
 import datetime
 
-# ==========================================
-# 1. 全局設定 (最簡化)
-# ==========================================
-st.set_page_config(page_title="Momo Design", page_icon="👕", layout="wide")
+# --- 正式版資料庫套件 ---
+import gspread
+from google.oauth2.service_account import Credentials
 
-# 模擬資料庫
+# ==========================================
+# 1. 全局設定 & 資料庫連線 (Google Sheets)
+# ==========================================
+st.set_page_config(page_title="Momo Design Pro", page_icon="💎", layout="wide")
+
+# 定義權限範圍
+SCOPES = [
+    "https://www.googleapis.com/auth/spreadsheets",
+    "https://www.googleapis.com/auth/drive"
+]
+
 @st.cache_resource
-def get_database():
-    return {"members": []}
-db = get_database()
+def connect_to_gsheet():
+    """連線到 Google Sheets"""
+    try:
+        # 從 Streamlit Secrets 讀取金鑰
+        # 注意：一定要確認 Secrets 裡的標題是 [gcp_service_account]
+        if "gcp_service_account" in st.secrets:
+            credentials = Credentials.from_service_account_info(
+                st.secrets["gcp_service_account"],
+                scopes=SCOPES
+            )
+            gc = gspread.authorize(credentials)
+            # 開啟試算表 (請確認您的試算表名稱是 momo_db)
+            sh = gc.open("momo_db")
+            return sh
+        else:
+            return None
+    except Exception as e:
+        print(f"資料庫連線失敗: {e}") # 印在後台log
+        return None
+
+# 初始化連線
+sh = connect_to_gsheet()
 
 # 狀態初始化
 if "user_role" not in st.session_state: st.session_state["user_role"] = "guest"
@@ -25,11 +53,53 @@ if "user_info" not in st.session_state: st.session_state["user_info"] = {}
 if "site_locked" not in st.session_state: st.session_state["site_locked"] = True
 
 # ==========================================
-# 2. 全站密碼鎖
+# 2. 輔助函式：讀寫資料庫
+# ==========================================
+def add_member_to_db(name, phone, code, is_amb):
+    """寫入會員資料"""
+    if sh:
+        try:
+            worksheet = sh.worksheet("members")
+            # 寫入資料：Name, Phone, Code, Is_Ambassador, Date
+            worksheet.append_row([name, phone, code, "TRUE" if is_amb else "FALSE", str(datetime.date.today())])
+            return True
+        except Exception as e:
+            st.error(f"寫入會員失敗: {e}")
+            return False
+    return False # 如果沒連線成功
+
+def add_order_to_db(data):
+    """寫入訂單資料"""
+    if sh:
+        try:
+            worksheet = sh.worksheet("orders")
+            # 產生訂單編號
+            order_id = f"ORD-{datetime.datetime.now().strftime('%Y%m%d%H%M%S')}"
+            # 寫入資料
+            worksheet.append_row([
+                order_id,
+                data['name'],
+                data['contact'],
+                data['phone'],
+                data['line'],
+                f"{data['series']}-{data['variant']}",
+                data['qty'],
+                data['note'],
+                data['promo_code'],
+                str(datetime.date.today())
+            ])
+            return True
+        except Exception as e:
+            st.error(f"寫入訂單失敗: {e}")
+            return False
+    return False
+
+# ==========================================
+# 3. 全站密碼鎖
 # ==========================================
 def check_lock():
     if st.session_state["site_locked"]:
-        st.markdown("<br><h2 style='text-align:center;'>🔒 系統鎖定中</h2>", unsafe_allow_html=True)
+        st.markdown("<br><h2 style='text-align:center;'>🔒 Momo 內部系統</h2>", unsafe_allow_html=True)
         c1, c2, c3 = st.columns([1,1,1])
         with c2:
             pwd = st.text_input("輸入密碼", type="password", label_visibility="collapsed")
@@ -44,46 +114,35 @@ def check_lock():
 check_lock()
 
 # ==========================================
-# 3. 字型處理 (安全防崩潰版)
+# 4. 字型處理 (安全版)
 # ==========================================
 FONT_FILE = "NotoSansTC-Regular.ttf"
-# 使用 Google Fonts 的穩定連結
 FONT_URL = "https://github.com/google/fonts/raw/main/ofl/notosanstc/NotoSansTC-Regular.ttf"
 
 def get_safe_font(size):
-    """
-    取得字型：優先嘗試下載中文，失敗則回傳預設 (不會崩潰)
-    """
     font = None
-    
-    # 1. 檢查並下載 (如果檔案不存在或太小，就下載)
+    # 1. 嘗試下載
     if not os.path.exists(FONT_FILE) or os.path.getsize(FONT_FILE) < 1000000:
         try:
-            print("正在下載字型...")
-            r = requests.get(FONT_URL, timeout=5) # 設定超時，避免卡太久
+            r = requests.get(FONT_URL, timeout=5)
             if r.status_code == 200:
-                with open(FONT_FILE, "wb") as f:
-                    f.write(r.content)
-        except:
-            pass # 下載失敗就算了，不要報錯
+                with open(FONT_FILE, "wb") as f: f.write(r.content)
+        except: pass
 
-    # 2. 嘗試讀取字型檔
+    # 2. 嘗試讀取
     try:
         if os.path.exists(FONT_FILE):
             font = ImageFont.truetype(FONT_FILE, size)
-    except Exception:
-        # 如果讀取失敗 (例如檔案壞掉)，刪除它以便下次重試
-        try: os.remove(FONT_FILE) 
+    except:
+        try: os.remove(FONT_FILE) # 壞檔刪除
         except: pass
     
-    # 3. 如果上面都失敗，使用醜但安全的預設字體
-    if font is None:
-        font = ImageFont.load_default()
-        
+    # 3. 保底
+    if font is None: font = ImageFont.load_default()
     return font
 
 # ==========================================
-# 4. CSS 美化
+# 5. CSS 美化
 # ==========================================
 st.markdown("""
     <style>
@@ -99,25 +158,19 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ==========================================
-# 5. 詢價單生成
+# 6. 詢價單生成
 # ==========================================
 def generate_inquiry(img, data):
     w, h = 800, 1300
     card = Image.new("RGB", (w, h), "white")
     draw = ImageDraw.Draw(card)
     
-    # 取得字型 (絕對不會報錯)
-    f_xl = get_safe_font(40)
-    f_l = get_safe_font(30)
-    f_m = get_safe_font(24)
-    f_s = get_safe_font(20)
+    f_xl, f_l, f_m, f_s = get_safe_font(40), get_safe_font(30), get_safe_font(24), get_safe_font(20)
     
-    # 繪製內容
     draw.rectangle([(0,0), (w, 140)], fill="#2c3e50")
     draw.text((40, 50), "Momo Design 需求詢價單", fill="white", font=f_xl)
     draw.text((w-250, 60), str(datetime.date.today()), fill="#ccc", font=f_s)
     
-    # 圖片
     t_w = 400
     ratio = t_w / img.width
     t_h = int(img.height * ratio)
@@ -148,9 +201,8 @@ def generate_inquiry(img, data):
         if k == "---":
             y += 15; draw.line([(50,y), (750,y)], fill="#eee", width=1); y += 25
             continue
-        draw.text((60, y), f"[{k}]", fill="#2c3e50", font=f_m) # 括號避免方塊字太醜
+        draw.text((60, y), f"[{k}]", fill="#2c3e50", font=f_m)
         val = str(v) if v else "-"
-        # 簡單換行
         for i in range(0, len(val), 22):
             draw.text((250, y), val[i:i+22], fill="#333", font=f_m)
             y += 40
@@ -161,7 +213,7 @@ def generate_inquiry(img, data):
     return card
 
 # ==========================================
-# 6. 介面 (去除所有雜項)
+# 7. 介面邏輯 (完整功能)
 # ==========================================
 with st.sidebar:
     st.title("👤 會員中心")
@@ -175,10 +227,24 @@ with st.sidebar:
             if st.button("確認", type="primary", use_container_width=True):
                 if r_name and r_phone:
                     code = f"{r_name.upper()}{r_phone[-3:]}" if is_amb else "MEMBER"
-                    db["members"].append({"Name":r_name, "Phone":r_phone, "Code":code})
-                    st.session_state["user_role"] = "member"
-                    st.session_state["user_info"] = {"name":r_name, "code":code, "is_ambassador":is_amb}
-                    st.rerun()
+                    
+                    # --- 寫入 Google Sheets (關鍵步驟) ---
+                    if sh:
+                        with st.spinner("資料同步中..."):
+                            success = add_member_to_db(r_name, r_phone, code, is_amb)
+                        if success:
+                            st.session_state["user_role"] = "member"
+                            st.session_state["user_info"] = {"name":r_name, "code":code, "is_ambassador":is_amb}
+                            st.success("註冊成功！")
+                            st.rerun()
+                        else:
+                            st.error("資料庫連線異常，但允許臨時登入")
+                            # 降級處理：即使沒網路也讓進，但不存檔
+                            st.session_state["user_role"] = "member"
+                            st.session_state["user_info"] = {"name":r_name, "code":code, "is_ambassador":is_amb}
+                            st.rerun()
+                    else:
+                        st.error("尚未設定資料庫連線 (Secrets)")
     else:
         u = st.session_state["user_info"]
         st.success(f"Hi, {u['name']}")
@@ -188,7 +254,6 @@ with st.sidebar:
             st.session_state["user_info"] = {}
             st.rerun()
 
-# 主畫面
 st.markdown("#### 🛍️ 選擇模式")
 mode = st.radio("mode", ["一般訂製", "公司團體 (詢價)"], horizontal=True, label_visibility="collapsed")
 current_code = st.session_state["user_info"].get("code", "GUEST")
@@ -247,10 +312,19 @@ with col_tools:
                     "line": in_line, "qty": in_qty, "note": in_note,
                     "series": series, "variant": variant, "promo_code": current_code
                 }
-                with st.spinner("生成中..."):
+                
+                # --- 寫入 Google Sheets (訂單) ---
+                if sh:
+                    with st.spinner("訂單同步中..."):
+                        add_order_to_db(data) # 這裡會把訂單存進雲端
+
+                with st.spinner("圖片生成中..."):
                     card = generate_inquiry(final, data)
                     buf = io.BytesIO(); card.save(buf, format="PNG")
                 st.download_button("📥 下載圖片", data=buf.getvalue(), file_name="Inquiry.png", mime="image/png", use_container_width=True)
+                
+                if sh: st.success("✅ 訂單已自動存入雲端後台")
+                
     else:
         st.markdown(f"#### 建議售價：NT$ {item.get('price', 0)}")
         buf = io.BytesIO(); final.save(buf, format="PNG")
