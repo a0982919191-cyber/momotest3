@@ -20,11 +20,11 @@ STD_POSITIONS = {
 
 PRODUCT_CATALOG = {
     "品牌聯名系列": {
-        "MakeWorld 客製棉T (黑)": {"image": "assets/AG21000_Black.png", "price": 590, "positions": STD_POSITIONS},
-        "MakeWorld 客製棉T (白)": {"image": "assets/AG21000_white.png", "price": 590, "positions": STD_POSITIONS},
-        "MakeWorld 客製棉T (藍)": {"image": "assets/AG21000_Blue.png", "price": 590, "positions": STD_POSITIONS},
-        "MakeWorld 客製棉T (卡其)": {"image": "assets/AG21000_Khaki.png", "price": 590, "positions": STD_POSITIONS},
-        "MakeWorld 客製棉T (灰)": {"image": "assets/AG21000_grey.png", "price": 590, "positions": STD_POSITIONS},
+        "MakeWorld 客製棉T (黑)": {"image": "assets/AG21000_Black.png", "price": 680, "positions": STD_POSITIONS},
+        "MakeWorld 客製棉T (白)": {"image": "assets/AG21000_white.png", "price": 680, "positions": STD_POSITIONS},
+        "MakeWorld 客製棉T (藍)": {"image": "assets/AG21000_Blue.png", "price": 680, "positions": STD_POSITIONS},
+        "MakeWorld 客製棉T (卡其)": {"image": "assets/AG21000_Khaki.png", "price": 680, "positions": STD_POSITIONS},
+        "MakeWorld 客製棉T (灰)": {"image": "assets/AG21000_grey.png", "price": 680, "positions": STD_POSITIONS},
     }
 }
 
@@ -254,3 +254,4 @@ with c2:
     else:
         buf = io.BytesIO(); final.save(buf, format="PNG")
         st.download_button("📥 下載圖", data=buf.getvalue(), file_name="Design.png", mime="image/png")
+
