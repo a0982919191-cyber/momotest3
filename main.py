@@ -9,27 +9,11 @@ import datetime
 import gspread
 from google.oauth2.service_account import Credentials
 
-# ==========================================
-# 1. 產品目錄 (位置數值已全數校正)
-# ==========================================
-STD_POSITIONS = {
-    "正中間": [300, 400], 
-    "左胸": [450, 250], 
-    "背後大圖": [300, 350]
-}
-
-PRODUCT_CATALOG = {
-    "品牌聯名系列": {
-        "MakeWorld 客製棉T (黑)": {"image": "assets/AG21000_Black.png", "price": 680, "positions": STD_POSITIONS},
-        "MakeWorld 客製棉T (白)": {"image": "assets/AG21000_white.png", "price": 680, "positions": STD_POSITIONS},
-        "MakeWorld 客製棉T (藍)": {"image": "assets/AG21000_Blue.png", "price": 680, "positions": STD_POSITIONS},
-        "MakeWorld 客製棉T (卡其)": {"image": "assets/AG21000_Khaki.png", "price": 680, "positions": STD_POSITIONS},
-        "MakeWorld 客製棉T (灰)": {"image": "assets/AG21000_grey.png", "price": 680, "positions": STD_POSITIONS},
-    }
-}
+# --- 關鍵修改：從 products.py 匯入產品目錄 ---
+from products import PRODUCT_CATALOG 
 
 # ==========================================
-# 2. 全局設定 & 資料庫連線
+# 1. 全局設定 & 資料庫連線
 # ==========================================
 st.set_page_config(page_title="Momo Design Pro", page_icon="💎", layout="wide")
 SCOPES = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
@@ -51,95 +35,100 @@ if "user_info" not in st.session_state: st.session_state["user_info"] = {}
 if "site_locked" not in st.session_state: st.session_state["site_locked"] = True
 
 # ==========================================
-# 3. 字型處理 (智慧型防崩潰系統)
+# 2. 字型處理 (智慧防崩潰)
 # ==========================================
-# 這裡我們不使用 assets 裡的字型，改用自動下載的暫存檔，避免您上傳到壞掉的檔案
 FONT_SAVE_PATH = "temp_font.ttf" 
 FONT_URL = "https://github.com/google/fonts/raw/main/ofl/notosanstc/NotoSansTC-Regular.ttf"
 
 def get_font(size):
-    """
-    嘗試取得中文字型，如果失敗則使用系統預設 (方塊字)，
-    保證永遠不會讓程式崩潰。
-    """
     font = None
-    
-    # 1. 檢查暫存檔是否存在且完整 (大於 1MB)
     if not os.path.exists(FONT_SAVE_PATH) or os.path.getsize(FONT_SAVE_PATH) < 1000000:
         try:
-            # 嘗試下載
             r = requests.get(FONT_URL, timeout=5)
             if r.status_code == 200:
-                with open(FONT_SAVE_PATH, "wb") as f:
-                    f.write(r.content)
-        except:
-            pass # 下載失敗就略過
+                with open(FONT_SAVE_PATH, "wb") as f: f.write(r.content)
+        except: pass
 
-    # 2. 嘗試讀取字型
     try:
         if os.path.exists(FONT_SAVE_PATH):
             font = ImageFont.truetype(FONT_SAVE_PATH, size)
-    except Exception:
-        # 如果檔案壞掉，刪除它以便下次重試
+    except:
         try: os.remove(FONT_SAVE_PATH)
         except: pass
     
-    # 3. 【最後防線】如果上面都失敗，使用系統預設字體
-    # 這就是您要求的「內建字體」，雖然中文會變方塊，但至少程式能跑
-    if font is None:
-        font = ImageFont.load_default()
-        
+    if font is None: font = ImageFont.load_default()
     return font
 
 # ==========================================
-# 4. 詢價單生成
+# 3. 詢價單生成 (底圖套用版)
 # ==========================================
 def generate_inquiry(img, data):
-    w, h = 800, 1300
-    card = Image.new("RGB", (w, h), "white")
+    w, h = 800, 1200 
+    
+    # 載入底圖 (如果有 template.png)
+    if os.path.exists("template.png"):
+        try:
+            card = Image.open("template.png").convert("RGB").resize((w, h))
+        except:
+            card = Image.new("RGB", (w, h), "white")
+    else:
+        card = Image.new("RGB", (w, h), "white")
+
     draw = ImageDraw.Draw(card)
     
-    # 使用安全字型取得器
-    f_xl = get_font(40)
-    f_l = get_font(30)
-    f_m = get_font(24)
-    f_s = get_font(20)
+    # 字型設定
+    f_title = get_font(40)
+    f_label = get_font(24)
+    f_text = get_font(22)
+    f_small = get_font(18)
     
-    draw.rectangle([(0,0), (w, 140)], fill="#2c3e50")
-    # 這裡如果是方塊字，代表下載失敗，但至少不會 Error
-    draw.text((40, 50), "Momo Design 需求詢價單", fill="white", font=f_xl)
-    draw.text((w-250, 60), str(datetime.date.today()), fill="#ccc", font=f_s)
-    
-    t_w = 400; ratio = t_w/img.width; t_h = int(img.height*ratio)
+    # 貼上衣服圖案
+    t_w = 400
+    ratio = t_w / img.width
+    t_h = int(img.height * ratio)
     res = img.resize((t_w, t_h))
-    draw.rectangle([((w-t_w)//2-5, 170-5), ((w-t_w)//2+t_w+5, 170+t_h+5)], fill="#eee")
-    card.paste(res, ((w-t_w)//2, 170), res if res.mode=='RGBA' else None)
     
-    y = 170 + t_h + 50
-    draw.line([(50,y), (750,y)], fill="#ddd", width=2); y += 30
+    img_x = (w - t_w) // 2
+    img_y = 150
     
-    if data.get('promo_code') not in [None, "GUEST"]:
-        draw.rectangle([(50, y), (750, y+60)], fill="#fff3cd")
-        draw.text((70, y+15), f"★ 分潤代碼：{data.get('promo_code')}", fill="#856404", font=f_l); y += 90
+    # 白底框 (避免底圖干擾)
+    draw.rectangle([(img_x-10, img_y-10), (img_x+t_w+10, img_y+t_h+10)], fill="white")
+    card.paste(res, (img_x, img_y), res if res.mode=='RGBA' else None)
     
-    fields = [("詢價單位", data.get('name')), ("聯絡人", data.get('contact')), ("電話", data.get('phone')), ("LINE ID", data.get('line')),
-              ("---", "---"), ("系列", data.get('series')), ("款式", data.get('variant')), ("數量", f"{data.get('qty')} 件"), ("備註", data.get('note'))]
+    # 填寫文字
+    if not os.path.exists("template.png"):
+        draw.rectangle([(0,0), (w, 120)], fill="#2c3e50")
+        draw.text((30, 40), "Momo Design 詢價單", fill="white", font=f_title)
     
-    for k, v in fields:
-        if k == "---":
-            y+=15; draw.line([(50,y), (750,y)], fill="#eee", width=1); y+=25; continue
-        draw.text((60, y), f"【{k}】", fill="#2c3e50", font=f_m)
-        val = str(v) if v else "-"
-        for i in range(0, len(val), 22):
-            draw.text((250, y), val[i:i+22], fill="#333", font=f_m); y += 40
-        y += 10
+    draw.text((600, 60), f"日期: {datetime.date.today()}", fill="#333", font=f_small)
 
-    draw.rectangle([(0, h-80), (w, h)], fill="#f8f9fa")
-    draw.text((200, h-50), "正式報價以業務回傳為主", fill="#999", font=f_s)
+    start_y = 650 
+    line_height = 50
+    
+    fields = [
+        ("訂購單位", data.get('name')),
+        ("聯絡姓名", data.get('contact')),
+        ("聯絡電話", data.get('phone')),
+        ("LINE ID", data.get('line')),
+        ("產品系列", data.get('series')),
+        ("產品款式", data.get('variant')),
+        ("訂購數量", f"{data.get('qty')} 件"),
+        ("備註事項", data.get('note')),
+        ("推廣代碼", data.get('promo_code') if data.get('promo_code') != "GUEST" else "無")
+    ]
+    
+    for label, content in fields:
+        if not os.path.exists("template.png"):
+             draw.line([(50, start_y + 35), (750, start_y + 35)], fill="#ddd", width=1)
+        
+        draw.text((80, start_y), f"{label}：", fill="#555", font=f_label)
+        draw.text((250, start_y), str(content), fill="black", font=f_text)
+        start_y += line_height
+
     return card
 
 # ==========================================
-# 5. 資料庫寫入
+# 4. 資料庫寫入
 # ==========================================
 def add_member_to_db(name, phone, code, is_amb):
     if sh:
@@ -161,7 +150,7 @@ def add_order_to_db(data):
     return False
 
 # ==========================================
-# 6. 介面 & 密碼鎖
+# 5. 介面 & 密碼鎖
 # ==========================================
 def check_lock():
     if st.session_state["site_locked"]:
@@ -201,11 +190,12 @@ ccode = st.session_state["user_info"].get("code", "GUEST")
 
 c1, c2 = st.columns([1.5, 1])
 with c2:
+    # --- 這裡開始使用外部匯入的 PRODUCT_CATALOG ---
     s = st.selectbox("系列", list(PRODUCT_CATALOG.keys()))
     v = st.selectbox("款式", list(PRODUCT_CATALOG[s].keys()))
     item = PRODUCT_CATALOG[s][v]
     
-    # 讀取校正後的位置
+    # 讀取位置設定
     pos = item.get("positions", {"正中間":[300, 400]})
     
     uf = st.file_uploader("上傳圖案")
@@ -254,4 +244,3 @@ with c2:
     else:
         buf = io.BytesIO(); final.save(buf, format="PNG")
         st.download_button("📥 下載圖", data=buf.getvalue(), file_name="Design.png", mime="image/png")
-
