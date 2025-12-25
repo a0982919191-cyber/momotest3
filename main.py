@@ -10,38 +10,27 @@ import gspread
 from google.oauth2.service_account import Credentials
 
 # ==========================================
-# 0. 產品目錄 (若您有 products.py，請保留 import 並刪除此區塊)
-# ==========================================
-# 這裡模擬您的 products.py 結構，確保阿默的店能開張
-PRODUCT_CATALOG = {
-    "團體服系列": {
-        "吸濕排汗 T-shirt": {
-            "name": "吸濕排汗 T-shirt",
-            "images": {"front": "https://placehold.co/600x800/EEE/31343C.png?text=Front+View", "back": "https://placehold.co/600x800/EEE/31343C.png?text=Back+View"}, # 請換成您的真實圖片路徑
-            "pos_front": {"左胸 (Logo)": {"coords": (400, 250)}, "正中間 (大圖)": {"coords": (300, 400)}},
-            "pos_back": {"背後大圖": {"coords": (300, 300)}, "領口小標": {"coords": (300, 100)}}
-        },
-        "純棉圓領 T-shirt": {
-            "name": "純棉圓領 T-shirt",
-            "images": {"front": "https://placehold.co/600x800/FFF/31343C.png?text=Cotton+Front", "back": "https://placehold.co/600x800/FFF/31343C.png?text=Cotton+Back"},
-            "pos_front": {"正中間": {"coords": (300, 400)}},
-            "pos_back": {"背後大圖": {"coords": (300, 300)}}
-        }
-    },
-    "文創禮品系列": {
-        "客製化帆布袋": {
-            "name": "客製化帆布袋",
-            "images": {"front": "https://placehold.co/600x800/f0e68c/31343C.png?text=Canvas+Bag", "back": "https://placehold.co/600x800/f0e68c/31343C.png?text=Back"},
-            "pos_front": {"正中間": {"coords": (300, 400)}},
-            "pos_back": {}
-        }
-    }
-}
-
-# ==========================================
-# 1. 全局設定 & 資料庫連線
+# 1. 全局設定 & 嘗試匯入產品目錄
 # ==========================================
 st.set_page_config(page_title="興彰 x 默默｜線上設計估價", page_icon="👕", layout="wide")
+
+# --- 嘗試讀取您原本的 products.py ---
+try:
+    from products import PRODUCT_CATALOG
+except ImportError:
+    # 萬一讀不到檔案，才使用這個備用目錄 (避免報錯)
+    st.warning("⚠️ 找不到 products.py，目前顯示測試資料。請確認檔案是否上傳。")
+    PRODUCT_CATALOG = {
+        "團體服系列": {
+            "吸濕排汗 T-shirt": {
+                "name": "吸濕排汗 T-shirt",
+                "images": {"front": "https://placehold.co/600x800/EEE/31343C.png?text=Front+View", "back": "https://placehold.co/600x800/EEE/31343C.png?text=Back+View"},
+                "pos_front": {"左胸 (Logo)": {"coords": (400, 250)}, "正中間 (大圖)": {"coords": (300, 400)}},
+                "pos_back": {"背後大圖": {"coords": (300, 300)}}
+            }
+        }
+    }
+
 SCOPES = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
 
 @st.cache_resource
@@ -60,9 +49,32 @@ sh = connect_to_gsheet()
 if "user_role" not in st.session_state: st.session_state["user_role"] = "guest"
 if "user_info" not in st.session_state: st.session_state["user_info"] = {}
 if "designs" not in st.session_state: st.session_state["designs"] = {} 
+if "site_locked" not in st.session_state: st.session_state["site_locked"] = True # 預設上鎖
 
 # ==========================================
-# 2. 詢價單生成 (圖片版 - 加入阿默行銷元素)
+# 2. 密碼鎖定功能 (新增回來)
+# ==========================================
+def check_lock():
+    if st.session_state["site_locked"]:
+        st.markdown("<br><br><br>", unsafe_allow_html=True)
+        col1, col2, col3 = st.columns([1, 2, 1])
+        with col2:
+            st.markdown("<h2 style='text-align:center;'>🔒 網站維護中</h2>", unsafe_allow_html=True)
+            st.caption("目前網站進行內部調整，請輸入密碼進入 (預設: momo2025)")
+            pwd = st.text_input("輸入密碼", type="password", label_visibility="collapsed")
+            if st.button("解鎖登入", type="primary", use_container_width=True):
+                if pwd == "momo2025": # 您可以在此修改密碼
+                    st.session_state["site_locked"] = False
+                    st.rerun()
+                else:
+                    st.error("密碼錯誤")
+        st.stop() # 停止執行下方程式碼
+
+# 執行檢查 (必須放在最前面)
+check_lock()
+
+# ==========================================
+# 3. 詢價單生成 (圖片版)
 # ==========================================
 def generate_inquiry_image(base_img_front, data, design_list_text):
     w, h = 800, 1200
@@ -90,7 +102,7 @@ def generate_inquiry_image(base_img_front, data, design_list_text):
     ]
     fields.extend(design_list_text)
     
-    # ** 行銷植入：阿默的 95 折召喚術 **
+    # 阿默的 95 折召喚術
     fields.append("--------------------------------")
     fields.append("!!! DISCOUNT ALERT !!!")
     fields.append("Send this image to LINE: @727jxovv")
@@ -103,7 +115,7 @@ def generate_inquiry_image(base_img_front, data, design_list_text):
     return card
 
 # ==========================================
-# 3. 資料庫寫入函式 (保持不變)
+# 4. 資料庫寫入函式
 # ==========================================
 def add_order_to_db(data):
     if sh:
@@ -117,10 +129,8 @@ def add_order_to_db(data):
     return False
 
 # ==========================================
-# 4. 介面設計 - 阿默店面裝修
+# 5. 介面設計 - 阿默店面裝修
 # ==========================================
-
-# 移除 check_lock()，因為 Threads 引流需要開放訪問
 
 # --- CSS 美化 ---
 st.markdown("""
@@ -128,14 +138,13 @@ st.markdown("""
     .stApp {background-color: #F5F5F7;}
     div[data-testid="stSidebar"] {background-color: #FFFFFF;}
     h1, h2, h3 {font-family: 'Helvetica', sans-serif;}
-    .big-font {font-size:20px !important; font-weight: bold;}
 </style>
 """, unsafe_allow_html=True)
 
 # --- 側邊欄：阿默的櫃台 ---
 with st.sidebar:
-    # 這裡放上您的職人照片
-    st.image("https://images.unsplash.com/photo-1556740738-b6a63e27c4df?w=300", caption="阿默｜興彰企業") # 之後換成您的照片網址
+    # 這裡記得換回您的職人照片網址
+    st.image("https://images.unsplash.com/photo-1556740738-b6a63e27c4df?w=300", caption="阿默｜興彰企業") 
     
     st.markdown("### 👨‍🔧 關於我們")
     st.info("""
@@ -146,20 +155,16 @@ with st.sidebar:
     
     st.markdown("---")
     st.success("🆔 **LINE ID: @727jxovv**")
-    st.caption("截圖估價單私訊，享 95 折")
     
-    st.markdown("---")
-    with st.expander("會員/經銷商登入"):
-        rn = st.text_input("姓名"); rp = st.text_input("電話")
-        if st.button("登入"):
-            st.session_state.update({"user_role":"member", "user_info":{"name":rn, "code":f"{rn[:1]}{rp[-3:]}"}})
-            st.rerun()
+    # 重新上鎖按鈕 (方便測試用)
+    if st.button("🔒 鎖定網站"):
+        st.session_state["site_locked"] = True
+        st.rerun()
 
 # --- 主畫面 ---
 st.title("📝 線上設計 & 自助估價")
 st.caption("🚀 免等業務，30秒預覽你的設計｜興彰企業 x 默默文創")
 
-# 模式選擇
 mode = st.radio("您是？", ["一般訪客 (快速估價)", "公司團體 (詳細訂製)"], horizontal=True)
 ccode = st.session_state["user_info"].get("code", "THREADS_GUEST")
 
@@ -200,8 +205,9 @@ with c2:
         
         if uf:
             img = Image.open(uf).convert("RGBA")
+            # 儲存圖片到 Session
             st.session_state["designs"][design_key] = st.session_state["designs"].get(design_key, {"img": img, "rb": False, "sz": 150, "rot": 0, "ox": 0, "oy": 0})
-            st.session_state["designs"][design_key]["img"] = img # Update image
+            st.session_state["designs"][design_key]["img"] = img 
             
         if design_key in st.session_state["designs"]:
             d_data = st.session_state["designs"][design_key]
@@ -224,14 +230,16 @@ with c1:
     st.markdown(f"#### 👁️ 預覽: {v} ({'正面' if current_side=='front' else '背面'})")
     try:
         img_url = item["images"][current_side]
-        # 處理圖片讀取 (支援網址或本地)
-        if img_url.startswith("http"):
+        
+        # === 圖片讀取邏輯 (本地優先，再來才是網路) ===
+        if os.path.exists(img_url): # 1. 檢查是不是本地檔案
+            base = Image.open(img_url).convert("RGBA")
+        elif img_url.startswith("http"): # 2. 檢查是不是網址
             response = requests.get(img_url, stream=True)
             base = Image.open(response.raw).convert("RGBA")
-        elif os.path.exists(img_url):
-            base = Image.open(img_url).convert("RGBA")
-        else:
-            base = Image.new("RGBA", (600, 800), (240, 240, 240)) # 預設白底
+        else: # 3. 都沒有就用灰底白圖
+            base = Image.new("RGBA", (600, 800), (240, 240, 240))
+            st.warning(f"找不到圖片: {img_url}")
 
         final = base.copy()
         
@@ -241,7 +249,9 @@ with c1:
             
             if d_side == current_side:
                 # 取得該面位置設定
-                pos_config = item["pos_front" if current_side == "front" else "pos_back"].get(d_pos_name)
+                # 注意：這裡要判斷現在是正面還是背面，來取用正確的座標設定
+                pos_source = item["pos_front"] if current_side == "front" else item["pos_back"]
+                pos_config = pos_source.get(d_pos_name)
                 
                 if pos_config:
                     tx, ty = pos_config["coords"]
@@ -262,7 +272,7 @@ with c1:
     except Exception as e:
         st.error(f"圖片載入錯誤: {e}")
 
-# --- 下方送出區 (Call to Action) ---
+# --- 下方送出區 ---
 st.divider()
 st.markdown("### 3. 完成與估價")
 
@@ -279,19 +289,13 @@ with st.container():
         if st.button("🚀 生成詢價單 (領取 95 折)", type="primary", use_container_width=True):
             design_list = [f"• {k}" for k in st.session_state["designs"].keys()]
             
-            # 準備資料
             dt = {"name": inn, "contact": inn, "phone": "Online", "line": "Online", 
                   "qty": inq, "note": "Threads Lead", "series": s, "variant": v, "promo_code": ccode}
             
-            # 存入 Google Sheets (若有連線)
-            if sh: 
-                add_order_to_db(dt)
+            if sh: add_order_to_db(dt)
             
-            # 生成圖片
             receipt_img = generate_inquiry_image(final.convert("RGB"), dt, design_list)
             
             st.success("✅ 詢價單已生成！請長按下方圖片儲存，並傳給阿默。")
             st.image(receipt_img, caption="請截圖此畫面傳 LINE: @727jxovv")
-            
-            # 強力導流按鈕
             st.link_button("👉 點此開啟 LINE 傳送截圖", "https://line.me/ti/p/~@727jxovv")
