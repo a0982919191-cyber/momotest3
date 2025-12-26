@@ -184,27 +184,25 @@ def load_logo():
 
 def generate_inquiry_image(img_front, img_back, data, design_list_text, unit_price):
     """
-    日系文創質感版詢價單 + 品牌浮水印（Header 排版微調、浮水印位置調整）
+    日系文創質感版詢價單 + 品牌浮水印
+    （已調整 FRONT/BACK 字級與置中位置）
     """
-    # 畫布
     w, h = 1400, 1200
     card = Image.new("RGB", (w, h), "#F7F4EE")  # 暖米白
     draw = ImageDraw.Draw(card)
 
     font_Title, font_L, font_M, font_S = get_fonts()
 
-    # ========= Header ｜ 上層標題＋日期，下層副標 =========
+    # ========= Header =========
     header_h = 140
     draw.rectangle([(0, 0), (w, header_h)], fill="#F0E6D8")
 
-    # 上層：品牌名稱
     draw.text(
         (70, 35),
         "HSINN ZHANG × MOMO",
         fill="#4A4A4A",
         font=font_Title,
     )
-    # 上層：日期（靠右對齊）
     today_str = datetime.date.today().strftime("%Y-%m-%d")
     draw.text(
         (w - 260, 45),
@@ -212,8 +210,6 @@ def generate_inquiry_image(img_front, img_back, data, design_list_text, unit_pri
         fill="#8A7E6A",
         font=font_M,
     )
-
-    # 下層：副標（與品牌左對齊，往下拉一點）
     draw.text(
         (72, 95),
         "ORIGINAL TEE ESTIMATE ｜ 客製服飾設計估價",
@@ -222,11 +218,10 @@ def generate_inquiry_image(img_front, img_back, data, design_list_text, unit_pri
     )
 
     # ========= 商品預覽區 =========
-    card_y = header_h + 10  # 跟 header 留一點距離
+    card_y = header_h + 10
     img_box = (80, card_y, w - 80, card_y + 380)
     draw.rounded_rectangle(img_box, radius=26, fill="#FFFFFF")
 
-    # 中間小標題
     draw.text(
         (w // 2 - 70, card_y + 16),
         "DESIGN PREVIEW",
@@ -248,18 +243,32 @@ def generate_inquiry_image(img_front, img_back, data, design_list_text, unit_pri
     card.paste(res_f, (front_x, img_top), res_f)
     card.paste(res_b, (back_x, img_top), res_b)
 
-    # FRONT / BACK 標籤
+    # ======= FRONT / BACK 文字：改用較小字型並精準置中 =======
+    label_font = font_M  # 比原本小一級
+    # FRONT
+    front_text = "FRONT VIEW"
+    fb = draw.textbbox((0, 0), front_text, font=label_font)
+    fw_text = fb[2] - fb[0]
+    front_label_x = front_x + fw // 2 - fw_text // 2
+    front_label_y = img_top - 30  # 與衣服保留一點距離
     draw.text(
-        (front_x + fw // 2 - 70, img_top - 15),
-        "FRONT VIEW",
+        (front_label_x, front_label_y),
+        front_text,
         fill="#939FA8",
-        font=font_L,
+        font=label_font,
     )
+
+    # BACK
+    back_text = "BACK VIEW"
+    bb = draw.textbbox((0, 0), back_text, font=label_font)
+    bw_text = bb[2] - bb[0]
+    back_label_x = back_x + fw // 2 - bw_text // 2
+    back_label_y = img_top - 30
     draw.text(
-        (back_x + fw // 2 - 70, img_top - 15),
-        "BACK VIEW",
+        (back_label_x, back_label_y),
+        back_text,
         fill="#939FA8",
-        font=font_L,
+        font=label_font,
     )
 
     # ========= 下半部雙欄資訊卡 =========
@@ -268,7 +277,7 @@ def generate_inquiry_image(img_front, img_back, data, design_list_text, unit_pri
     draw.rounded_rectangle(left_box, radius=24, fill="#FFFFFF")
     draw.rounded_rectangle(right_box, radius=24, fill="#FFFFFF")
 
-    # ---- LEFT：客戶 & 產品資訊 ----
+    # LEFT
     lx, cy = 115, 595
     fields = [
         ("CLIENT NAME（客戶稱呼）", data.get("name")),
@@ -282,11 +291,9 @@ def generate_inquiry_image(img_front, img_back, data, design_list_text, unit_pri
         draw.text((lx, cy + 26), str(value), fill="#3C434A", font=font_L)
         cy += 86
 
-    # ---- RIGHT：價格＋尺寸＋位置 ----
+    # RIGHT
     rx = 795
     py = 595
-
-    # 價格區塊
     price_box = (rx - 10, py - 6, w - 95, py + 160)
     draw.rounded_rectangle(price_box, radius=18, fill="#FFF3EC")
 
@@ -304,7 +311,6 @@ def generate_inquiry_image(img_front, img_back, data, design_list_text, unit_pri
         font=font_M,
     )
 
-    # 尺寸分佈
     py += 190
     draw.text((rx, py), "SIZE BREAKDOWN（尺寸分佈）", fill="#9BA3AC", font=font_S)
     draw.text(
@@ -314,14 +320,13 @@ def generate_inquiry_image(img_front, img_back, data, design_list_text, unit_pri
         font=font_M,
     )
 
-    # 印刷位置
     py += 80
     draw.text((rx, py), "PRINT LOCATIONS（印刷位置）", fill="#9BA3AC", font=font_S)
     for t in design_list_text:
         py += 30
         draw.text((rx, py), f"• {t}", fill="#3C434A", font=font_M)
 
-    # ========= Footer ｜ 紅帶提示 =========
+    # Footer
     draw.rectangle([(0, h - 70), (w, h)], fill="#C8443B")
     footer_text = "CONFIRMATION｜請將此圖片傳送至 LINE：@727jxovv 完成最終確認與下單"
     draw.text(
@@ -331,7 +336,7 @@ def generate_inquiry_image(img_front, img_back, data, design_list_text, unit_pri
         font=font_M,
     )
 
-    # ========= 品牌浮水印（右下方稍往上，避免壓到 Footer） =========
+    # 浮水印
     logo = load_logo()
     if logo is not None:
         max_logo_w = 260
@@ -342,10 +347,9 @@ def generate_inquiry_image(img_front, img_back, data, design_list_text, unit_pri
         if logo.mode != "RGBA":
             logo = logo.convert("RGBA")
         alpha = logo.split()[3]
-        alpha = alpha.point(lambda p: int(p * 0.18))  # 再淡一點，大約 18% 不透明
+        alpha = alpha.point(lambda p: int(p * 0.18))
         logo.putalpha(alpha)
 
-        # 往上移一點，視覺在右下資訊卡區域，不壓到紅色 footer
         lx = w - max_logo_w - 60
         ly = h - logo_h - 130
         card.paste(logo, (lx, ly), logo)
@@ -808,4 +812,5 @@ else:
                         "👉 立即開啟 LINE 傳送圖檔給阿默",
                         "https://line.me/ti/p/~@727jxovv",
                     )
+
 
