@@ -6,3 +6,6 @@ requests
 pandas
 gspread
 google-auth
+pandas
+selenium
+webdriver-manager
