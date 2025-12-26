@@ -44,25 +44,15 @@ if "site_locked" not in st.session_state: st.session_state["site_locked"] = True
 # ==========================================
 @st.cache_data(show_spinner=False)
 def process_user_image(uploaded_file_bytes, apply_rb):
-    """
-    這是一個被快取保護的函數。
-    只要檔案內容沒變、去背選項沒變，Streamlit 就不會重新執行這裡的運算，
-    而是直接回傳上次算好的結果。
-    """
-    # 1. 讀取圖片
     img = Image.open(io.BytesIO(uploaded_file_bytes)).convert("RGBA")
-    
-    # 2. 圖片瘦身 (加速關鍵)：如果寬度超過 1200px，縮小它
     max_width = 1200
     if img.width > max_width:
         ratio = max_width / img.width
         new_height = int(img.height * ratio)
         img = img.resize((max_width, new_height))
     
-    # 3. AI 去背運算
     if apply_rb:
         img = remove(img)
-        
     return img
 
 # ==========================================
@@ -274,7 +264,6 @@ with c2:
     
     tab_f, tab_b = st.tabs(["👕 正面設計", "🔄 背面設計"])
     
-    # 封裝上傳邏輯
     def render_upload_ui(pos_dict, side_prefix):
         if not pos_dict:
             st.warning("無可編輯位置")
@@ -282,23 +271,16 @@ with c2:
         
         pk = st.selectbox(f"{side_prefix}位置", list(pos_dict.keys()), key=f"sel_{side_prefix}")
         design_key = f"{side_prefix}_{pk}"
-        
-        # 這裡不處理圖片，只負責接收檔案
         uf = st.file_uploader(f"上傳圖片 ({pk})", type=["png","jpg"], key=f"u_{design_key}")
         
         if uf:
-            # 存入 session_state 的不再是 image 物件，而是 raw bytes
-            # 這樣我們才能在後面使用 cache 機制
             file_bytes = uf.getvalue()
-            
-            # 初始化參數
             if design_key not in st.session_state["designs"]:
                 st.session_state["designs"][design_key] = {
-                    "bytes": file_bytes, # 存原始檔
+                    "bytes": file_bytes,
                     "rb": False, "sz": 150, "rot": 0, "ox": 0, "oy": 0
                 }
             else:
-                # 更新檔案
                 st.session_state["designs"][design_key]["bytes"] = file_bytes
 
     with tab_f:
@@ -336,7 +318,6 @@ with c1:
 
     final = base.copy()
     
-    # 貼上設計圖 (加速版)
     for d_key, d_val in st.session_state["designs"].items():
         d_side, d_pos_name = d_key.split("_", 1)
         if d_side == current_side:
@@ -346,12 +327,9 @@ with c1:
             if pos_config:
                 tx, ty = pos_config["coords"]
                 
-                # [核心加速] 呼叫快取函數處理圖片 (去背/縮圖)
-                # 只有當 d_val["bytes"] 或 d_val["rb"] 改變時，才會重新跑 AI
                 with st.spinner("處理中..." if d_val["rb"] else None):
                     paste_img = process_user_image(d_val["bytes"], d_val["rb"])
                 
-                # 下面這些縮放、旋轉是輕量運算，不需要 cache，保留即時性
                 wr = d_val["sz"] / paste_img.width
                 paste_img = paste_img.resize((d_val["sz"], int(paste_img.height * wr)))
                 if d_val["rot"] != 0: paste_img = paste_img.rotate(d_val["rot"], expand=True)
@@ -370,16 +348,31 @@ with c1:
             d_val = st.session_state["designs"][d_key]
             
             with st.expander(f"🔧 {d_key.split('_')[1]}", expanded=True):
-                # 1. AI 去背
-                d_val["rb"] = st.checkbox("✨ AI 智能去背 (快取加速版)", value=d_val["rb"], key=f"rb_{d_key}")
-                
-                # 2. 微調 (現在這些會非常順暢)
-                d_val["sz"] = st.slider("大小", 50, 400, d_val["sz"], key=f"sz_{d_key}")
-                d_val["rot"] = st.slider("旋轉", -180, 180, d_val["rot"], key=f"rot_{d_key}")
-                c1a, c2a = st.columns(2)
-                with c1a: d_val["ox"] = st.number_input("X軸", -100, 100, d_val["ox"], key=f"ox_{d_key}")
-                with c2a: d_val["oy"] = st.number_input("Y軸", -100, 100, d_val["oy"], key=f"oy_{d_key}")
-                if st.button("🗑️ 刪除", key=f"del_{d_key}"):
+                # [關鍵修改] 使用 st.form 建立表單，按下確認後才執行運算
+                with st.form(key=f"form_{d_key}"):
+                    st.caption("調整後請按下方按鈕更新畫面")
+                    
+                    new_rb = st.checkbox("✨ AI 智能去背 (Remove Background)", value=d_val["rb"])
+                    new_sz = st.slider("大小", 50, 400, d_val["sz"])
+                    new_rot = st.slider("旋轉", -180, 180, d_val["rot"])
+                    
+                    c1a, c2a = st.columns(2)
+                    with c1a: new_ox = st.number_input("X軸", -100, 100, d_val["ox"])
+                    with c2a: new_oy = st.number_input("Y軸", -100, 100, d_val["oy"])
+                    
+                    # 提交按鈕
+                    submitted = st.form_submit_button("✅ 確認套用變更")
+                    
+                    if submitted:
+                        d_val["rb"] = new_rb
+                        d_val["sz"] = new_sz
+                        d_val["rot"] = new_rot
+                        d_val["ox"] = new_ox
+                        d_val["oy"] = new_oy
+                        st.rerun()
+
+                # 刪除按鈕放在 Form 外面，避免混淆
+                if st.button("🗑️ 刪除此圖案", key=f"del_{d_key}"):
                     del st.session_state["designs"][d_key]
                     st.rerun()
 
@@ -441,12 +434,9 @@ else:
                     
                     if sh: add_order_to_db(dt)
                     
-                    # 生成詢價單 (需重新處理一次圖片以確保品質，這裡也使用 cache)
-                    # 注意：這裡邏輯簡化，僅使用正面第一張圖做示範
                     base_b = Image.open(img_url_back).convert("RGBA") if img_url_back and os.path.exists(img_url_back) else Image.new("RGBA", (600,800), (240,240,240))
                     final_back = base_b.copy()
                     
-                    # 重新合成背面 (使用相同的 process_user_image 加速)
                     for d_key, d_val in st.session_state["designs"].items():
                         if d_key.startswith("back_"):
                             pk = d_key.split("_", 1)[1]
