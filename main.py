@@ -24,6 +24,13 @@ st.set_page_config(page_title="興彰 x 默默｜線上設計估價", page_icon=
 SCOPES = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
 ASSETS_DIR = "assets"
 
+# [關鍵設定] 定義袖子的對應關係 (正面名稱 -> 背面名稱)
+# 這樣程式才知道要把正面的圖貼到背面的哪個座標
+SLEEVE_MAPPING = {
+    "左臂 (Left Sleeve)": "左臂-後 (L.Sleeve Back)",
+    "右臂 (Right Sleeve)": "右臂-後 (R.Sleeve Back)"
+}
+
 @st.cache_resource
 def connect_to_gsheet():
     try:
@@ -42,7 +49,7 @@ if "site_locked" not in st.session_state: st.session_state["site_locked"] = True
 if "uploader_keys" not in st.session_state: st.session_state["uploader_keys"] = {}
 
 # ==========================================
-# [新增] 核心加速引擎：圖片處理快取
+# 核心加速引擎：圖片處理快取
 # ==========================================
 @st.cache_data(show_spinner=False)
 def process_user_image(uploaded_file_bytes, apply_rb):
@@ -266,7 +273,7 @@ with c2:
     
     tab_f, tab_b = st.tabs(["👕 正面設計", "🔄 背面設計"])
     
-    # 封裝上傳邏輯 (支援預設角度)
+    # 封裝上傳邏輯
     def render_upload_ui(pos_dict, side_prefix):
         if not pos_dict:
             st.warning("無可編輯位置")
@@ -285,20 +292,17 @@ with c2:
         if uf:
             file_bytes = uf.getvalue()
             if design_key not in st.session_state["designs"]:
-                # [關鍵修改] 讀取 default_rot
                 default_rotation = pos_dict[pk].get("default_rot", 0)
-                
                 st.session_state["designs"][design_key] = {
                     "bytes": file_bytes,
                     "rb": False, 
                     "sz": 150, 
-                    "rot": default_rotation, # 使用預設角度
+                    "rot": default_rotation,
                     "ox": 0, "oy": 0
                 }
             else:
                 st.session_state["designs"][design_key]["bytes"] = file_bytes
         
-        # 刪除/重置按鈕
         if design_key in st.session_state["designs"]:
             st.info(f"✅ {pk} 目前已有一張圖片")
             if st.button(f"🗑️ 刪除/重置 {pk} 的圖片", key=f"btn_clear_{design_key}"):
@@ -341,25 +345,43 @@ with c1:
 
     final = base.copy()
     
+    # [關鍵邏輯] 貼上設計圖 (包含袖子同步邏輯)
     for d_key, d_val in st.session_state["designs"].items():
         d_side, d_pos_name = d_key.split("_", 1)
+        
+        # 決定是否要在這一面繪製此圖
+        should_draw = False
+        target_pos_config = None
+        
+        # 情況 1: 正常顯示 (正面顯示正面的圖，背面顯示背面的圖)
         if d_side == current_side:
-            pos_source = item.get("pos_front", {}) if current_side == "front" else item.get("pos_back", {})
-            pos_config = pos_source.get(d_pos_name)
+            should_draw = True
+            if current_side == "front":
+                target_pos_config = item.get("pos_front", {}).get(d_pos_name)
+            else:
+                target_pos_config = item.get("pos_back", {}).get(d_pos_name)
+        
+        # 情況 2: 袖子同步 (看背面時，顯示正面的袖子圖)
+        elif current_side == "back" and d_side == "front":
+            if d_pos_name in SLEEVE_MAPPING:
+                back_pos_name = SLEEVE_MAPPING[d_pos_name]
+                target_pos_config = item.get("pos_back", {}).get(back_pos_name)
+                should_draw = True
+        
+        # 執行繪製
+        if should_draw and target_pos_config:
+            tx, ty = target_pos_config["coords"]
             
-            if pos_config:
-                tx, ty = pos_config["coords"]
-                
-                with st.spinner("處理中..." if d_val["rb"] else None):
-                    paste_img = process_user_image(d_val["bytes"], d_val["rb"])
-                
-                wr = d_val["sz"] / paste_img.width
-                paste_img = paste_img.resize((d_val["sz"], int(paste_img.height * wr)))
-                if d_val["rot"] != 0: paste_img = paste_img.rotate(d_val["rot"], expand=True)
-                
-                final_x = int(tx - paste_img.width/2 + d_val["ox"])
-                final_y = int(ty - paste_img.height/2 + d_val["oy"])
-                final.paste(paste_img, (final_x, final_y), paste_img)
+            with st.spinner("處理中..." if d_val["rb"] else None):
+                paste_img = process_user_image(d_val["bytes"], d_val["rb"])
+            
+            wr = d_val["sz"] / paste_img.width
+            paste_img = paste_img.resize((d_val["sz"], int(paste_img.height * wr)))
+            if d_val["rot"] != 0: paste_img = paste_img.rotate(d_val["rot"], expand=True)
+            
+            final_x = int(tx - paste_img.width/2 + d_val["ox"])
+            final_y = int(ty - paste_img.height/2 + d_val["oy"])
+            final.paste(paste_img, (final_x, final_y), paste_img)
 
     st.image(final, use_container_width=True)
     
@@ -456,20 +478,34 @@ else:
                     
                     if sh: add_order_to_db(dt)
                     
+                    # 生成雙面預覽圖 (背後合成 - 也要包含袖子同步邏輯)
                     base_b = Image.open(img_url_back).convert("RGBA") if img_url_back and os.path.exists(img_url_back) else Image.new("RGBA", (600,800), (240,240,240))
                     final_back = base_b.copy()
                     
                     for d_key, d_val in st.session_state["designs"].items():
-                        if d_key.startswith("back_"):
-                            pk = d_key.split("_", 1)[1]
-                            pos = item.get("pos_back", {}).get(pk)
-                            if pos:
-                                tx, ty = pos["coords"]
-                                pi = process_user_image(d_val["bytes"], d_val["rb"])
-                                wr = d_val["sz"]/pi.width
-                                pi = pi.resize((d_val["sz"], int(pi.height*wr)))
-                                if d_val["rot"]!=0: pi=pi.rotate(d_val["rot"], expand=True)
-                                final_back.paste(pi, (int(tx-pi.width/2+d_val["ox"]), int(ty-pi.height/2+d_val["oy"])), pi)
+                        d_side, d_pos_name = d_key.split("_", 1)
+                        
+                        should_draw_b = False
+                        target_pos_config_b = None
+                        
+                        # 1. 正常的背面圖
+                        if d_side == "back":
+                            should_draw_b = True
+                            target_pos_config_b = item.get("pos_back", {}).get(d_pos_name)
+                        
+                        # 2. 袖子同步 (把正面袖子畫在背面)
+                        elif d_side == "front" and d_pos_name in SLEEVE_MAPPING:
+                            should_draw_b = True
+                            back_pos_name = SLEEVE_MAPPING[d_pos_name]
+                            target_pos_config_b = item.get("pos_back", {}).get(back_pos_name)
+                        
+                        if should_draw_b and target_pos_config_b:
+                            tx, ty = target_pos_config_b["coords"]
+                            pi = process_user_image(d_val["bytes"], d_val["rb"])
+                            wr = d_val["sz"]/pi.width
+                            pi = pi.resize((d_val["sz"], int(pi.height*wr)))
+                            if d_val["rot"]!=0: pi=pi.rotate(d_val["rot"], expand=True)
+                            final_back.paste(pi, (int(tx-pi.width/2+d_val["ox"]), int(ty-pi.height/2+d_val["oy"])), pi)
 
                     receipt_img = generate_inquiry_image(final.convert("RGB"), final_back.convert("RGB"), dt, design_list, unit_price)
                     
