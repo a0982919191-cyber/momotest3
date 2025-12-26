@@ -138,7 +138,6 @@ def classify_plan(qty, is_double_sided):
 def get_fonts():
     """取得四種字級的字型物件"""
     if not font_path:
-        # 若真的找不到中文字型，就回退預設英文字型
         return (
             ImageFont.load_default(),
             ImageFont.load_default(),
@@ -160,128 +159,193 @@ def get_fonts():
         )
 
 
+def load_logo():
+    """
+    從 assets 目錄載入 LOGO 做浮水印
+    目前指定檔名：LOGO.png
+    """
+    candidates = [
+        "LOGO.png",   # 指定檔名
+        "logo.png",
+        "logo.jpg",
+        "logo.jpeg",
+        "momo_logo.png",
+        "momo_logo.jpg",
+    ]
+    for fn in candidates:
+        p = ASSETS_DIR / fn
+        if p.exists():
+            try:
+                return Image.open(p).convert("RGBA")
+            except Exception:
+                continue
+    return None
+
+
 def generate_inquiry_image(img_front, img_back, data, design_list_text, unit_price):
     """
-    產生最終詢價單圖片
-    data: 包含 name, phone, line, qty, size_breakdown, series, variant 等
-    design_list_text: 位置清單（已整理好的文字陣列）
+    日系文創質感版詢價單 + 品牌浮水印
     """
-    w, h = 1200, 1100
-    card = Image.new("RGB", (w, h), "white")
+    # 畫布尺寸略放大，保留更多留白
+    w, h = 1400, 1200
+    card = Image.new("RGB", (w, h), "#F7F4EE")  # 暖米白底
     draw = ImageDraw.Draw(card)
 
     font_Title, font_L, font_M, font_S = get_fonts()
 
-    # Header
-    draw.rectangle([(0, 0), (w, 120)], fill="#2c3e50")
+    # ========= Header ｜ 日系簡約標頭 =========
+    header_h = 110
+    draw.rectangle([(0, 0), (w, header_h)], fill="#F0E6D8")
+
+    # 左側品牌名稱
     draw.text(
-        (50, 35),
-        "HSINN ZHANG x MOMO | BRAND ESTIMATE",
-        fill="white",
+        (60, 32),
+        "HSINN ZHANG × MOMO",
+        fill="#4A4A4A",
         font=font_Title,
     )
+    # 下方小標
     draw.text(
-        (w - 350, 45),
-        f"Date: {datetime.date.today()}",
-        fill="#ecf0f1",
+        (62, 72),
+        "ORIGINAL TEE ESTIMATE ｜ 客製服飾設計估價",
+        fill="#8A7E6A",
+        font=font_M,
+    )
+
+    # 日期區（右上角）
+    today_str = datetime.date.today().strftime("%Y-%m-%d")
+    draw.text(
+        (w - 280, 40),
+        f"DATE  {today_str}",
+        fill="#8A7E6A",
+        font=font_M,
+    )
+
+    # ========= 商品預覽區（白卡）=========
+    card_y = 145
+    img_box = (80, card_y, w - 80, card_y + 380)
+    draw.rounded_rectangle(img_box, radius=26, fill="#FFFFFF")
+    draw.text(
+        (w // 2 - 80, card_y + 16),
+        "DESIGN PREVIEW",
+        fill="#A1A7AD",
+        font=font_M,
+    )
+
+    # 前後圖尺寸
+    fw = 520
+    ratio = fw / img_front.width
+    fh = int(img_front.height * ratio)
+    res_f = img_front.resize((fw, fh))
+    res_b = img_back.resize((fw, fh))
+
+    # 貼上前後圖
+    front_x = 140
+    back_x = w - 140 - fw
+    img_top = card_y + 40
+    card.paste(res_f, (front_x, img_top), res_f)
+    card.paste(res_b, (back_x, img_top), res_b)
+
+    # FRONT / BACK 字樣
+    draw.text(
+        (front_x + fw // 2 - 70, img_top - 10),
+        "FRONT VIEW",
+        fill="#939FA8",
+        font=font_L,
+    )
+    draw.text(
+        (back_x + fw // 2 - 70, img_top - 10),
+        "BACK VIEW",
+        fill="#939FA8",
         font=font_L,
     )
 
-    # 商品預覽
-    t_w = 420
-    ratio = t_w / img_front.width
-    t_h = int(img_front.height * ratio)
-    res_f = img_front.resize((t_w, t_h))
-    res_b = img_back.resize((t_w, t_h))
+    # ========= 下半部雙欄資訊卡 =========
+    left_box = (80, 560, 740, h - 90)
+    right_box = (760, 560, w - 80, h - 90)
+    draw.rounded_rectangle(left_box, radius=24, fill="#FFFFFF")
+    draw.rounded_rectangle(right_box, radius=24, fill="#FFFFFF")
 
-    card.paste(res_f, (120, 150), res_f if res_f.mode == "RGBA" else None)
-    card.paste(res_b, (660, 150), res_b if res_b.mode == "RGBA" else None)
-
-    draw.text((280, 120), "FRONT VIEW", fill="#7f8c8d", font=font_L)
-    draw.text((820, 120), "BACK VIEW", fill="#7f8c8d", font=font_L)
-
-    # Info 分隔線
-    y_info = 150 + t_h + 40
-    draw.line([(50, y_info), (w - 50, y_info)], fill="#bdc3c7", width=2)
-
-    # 左欄：客戶＋產品資訊
-    col1_x = 80
-    curr_y = y_info + 40
-
-    fields_L = [
-        ("CLIENT NAME (客戶稱呼)", data.get("name")),
-        ("CONTACT INFO (聯絡方式)", f"{data.get('phone')} / {data.get('line')}"),
-        ("PRODUCT SERIES (產品系列)", data.get("series")),
-        ("STYLE & COLOR (款式顏色)", data.get("variant")),
-        ("PRINTING METHOD (印刷工藝)", "DTF (Direct to Film 數位膠膜)"),
+    # ---- LEFT：客戶 & 產品資訊 ----
+    lx, cy = 115, 595
+    fields = [
+        ("CLIENT NAME（客戶稱呼）", data.get("name")),
+        ("CONTACT INFO（聯絡方式）", f"{data.get('phone')} / {data.get('line')}"),
+        ("PRODUCT SERIES（產品系列）", data.get("series")),
+        ("STYLE & COLOR（款式顏色）", data.get("variant")),
+        ("PRINTING METHOD（印刷工藝）", "DTF 數位膠膜印製"),
     ]
+    for label, value in fields:
+        draw.text((lx, cy), label, fill="#9BA3AC", font=font_S)
+        draw.text((lx, cy + 26), str(value), fill="#3C434A", font=font_L)
+        cy += 86
 
-    for label, val in fields_L:
-        draw.text((col1_x, curr_y), label, fill="#95a5a6", font=font_S)
-        draw.text((col1_x, curr_y + 25), str(val), fill="#2c3e50", font=font_L)
-        curr_y += 75
+    # ---- RIGHT：價格＋尺寸＋位置 ----
+    rx = 795
+    py = 595
 
-    # 右欄：價格、尺寸、位置
-    col2_x = 660
-    curr_y = y_info + 40
+    # 價格區塊
+    price_box = (rx - 10, py - 6, w - 95, py + 160)
+    draw.rounded_rectangle(price_box, radius=18, fill="#FFF3EC")
 
-    # 價格框
-    draw.rectangle(
-        [(col2_x - 20, curr_y - 10), (w - 50, curr_y + 160)],
-        fill="#f7f9f9",
-    )
+    draw.text((rx, py), "ESTIMATED TOTAL（預估總計）", fill="#D4684C", font=font_L)
     draw.text(
-        (col2_x, curr_y),
-        "ESTIMATED TOTAL (預估總計)",
-        fill="#e74c3c",
-        font=font_L,
-    )
-    draw.text(
-        (col2_x, curr_y + 40),
-        f"NT$ {unit_price * data.get('qty'):,}",
-        fill="#c0392b",
+        (rx, py + 40),
+        f"NT$ {unit_price * data['qty']:,}",
+        fill="#C0392B",
         font=font_Title,
     )
     draw.text(
-        (col2_x, curr_y + 100),
-        f"(@ NT$ {unit_price} x {data.get('qty')} pcs)",
-        fill="#7f8c8d",
+        (rx, py + 100),
+        f"＠ NT$ {unit_price} × {data['qty']} pcs",
+        fill="#A27E6F",
         font=font_M,
     )
 
-    curr_y += 180
+    # 尺寸分佈
+    py += 190
+    draw.text((rx, py), "SIZE BREAKDOWN（尺寸分佈）", fill="#9BA3AC", font=font_S)
     draw.text(
-        (col2_x, curr_y),
-        "SIZE BREAKDOWN (尺寸分佈)",
-        fill="#95a5a6",
-        font=font_S,
-    )
-    draw.text(
-        (col2_x, curr_y + 25),
+        (rx, py + 26),
         str(data.get("size_breakdown")),
-        fill="#2c3e50",
+        fill="#3C434A",
         font=font_M,
     )
 
-    curr_y += 70
+    # 印刷位置
+    py += 80
+    draw.text((rx, py), "PRINT LOCATIONS（印刷位置）", fill="#9BA3AC", font=font_S)
+    for t in design_list_text:
+        py += 30
+        draw.text((rx, py), f"• {t}", fill="#3C434A", font=font_M)
+
+    # ========= Footer ｜ 紅帶提示 =========
+    draw.rectangle([(0, h - 70), (w, h)], fill="#C8443B")
+    footer_text = "CONFIRMATION｜請將此圖片傳送至 LINE：@727jxovv 完成最終確認與下單"
     draw.text(
-        (col2_x, curr_y),
-        "PRINT LOCATIONS (印刷位置)",
-        fill="#95a5a6",
-        font=font_S,
+        (w // 2 - 380, h - 50),
+        footer_text,
+        fill="white",
+        font=font_M,
     )
 
-    loc_y = curr_y + 25
-    for item in design_list_text:
-        draw.text((col2_x, loc_y), item, fill="#2c3e50", font=font_M)
-        loc_y += 30
+    # ========= 品牌浮水印（右下角） =========
+    logo = load_logo()
+    if logo is not None:
+        max_logo_w = 260
+        ratio = max_logo_w / logo.width
+        logo_h = int(logo.height * ratio)
+        logo = logo.resize((max_logo_w, logo_h))
 
-    # Footer
-    draw.rectangle([(0, h - 60), (w, h)], fill="#c0392b")
-    footer_text = (
-        "CONFIRMATION: 請將此圖片傳送至 LINE: @727jxovv 完成詢價確認。"
-    )
-    draw.text((120, h - 45), footer_text, fill="white", font=font_M)
+        if logo.mode != "RGBA":
+            logo = logo.convert("RGBA")
+        alpha = logo.split()[3]
+        alpha = alpha.point(lambda p: int(p * 0.25))  # 25% 不透明
+        logo.putalpha(alpha)
+
+        lx = w - max_logo_w - 40
+        ly = h - logo_h - 40
+        card.paste(logo, (lx, ly), logo)
 
     return card
 
@@ -377,7 +441,7 @@ st.markdown(
 ### ☑ 使用流程（4 個步驟）
 1. **選擇產品 & 數量**：先決定 AG21000 款式與各尺寸件數  
 2. **上傳設計圖檔**：可勾選「AI 智能去背」，即時預覽排版位置  
-3. **查看預估報價**：系統依件數與印刷面，對應品牌分級與單價  
+3. **查看預估報價**：系統依件數與正反面印製，自動對應品牌分級與單價  
 4. **生成正式詢價單**：一鍵輸出專業版報價圖，直接傳給阿默確認
 
 ---
@@ -718,7 +782,7 @@ else:
                                 pimg,
                             )
 
-                    # 整理印刷位置文字（比原本的 front_xxx 更友善）
+                    # 整理印刷位置文字
                     design_list = []
                     for dk in st.session_state["designs"].keys():
                         ds, dpn = dk.split("_", 1)
