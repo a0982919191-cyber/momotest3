@@ -538,43 +538,52 @@ with c2:
 # =========================
 # 尺寸輸入：卡片式 UI（單欄，順序固定）
 # =========================
+# =========================
+# 尺寸輸入：精簡卡片 UI（兩欄排列，順序固定）
+# =========================
 sizes = ["S", "M", "L", "XL", "2XL", "3XL", "4XL", "5XL"]
 
 size_inputs = {}
 st.markdown("### 尺寸件數設定")
 st.caption("請依實際需求輸入各尺寸件數（**最低總數 20 件**）：")
 
-# 單欄垂直排列，確保在手機上順序不會被打亂
-for size in sizes:
-    # 卡片式尺寸標籤
-    st.markdown(
-        f"""
+# 每列兩個尺寸：S/M、L/XL、2XL/3XL、4XL/5XL
+rows = [("S", "M"), ("L", "XL"), ("2XL", "3XL"), ("4XL", "5XL")]
+
+for left_size, right_size in rows:
+    cols = st.columns(2)
+
+    for col, size in zip(cols, (left_size, right_size)):
+        with col:
+            # 縮小版尺寸卡片：上方淡淡「SIZE」，下方是尺寸
+            st.markdown(
+                f"""
 <div style="
-    background-color:#F8F9FB;
-    border-radius:12px;
-    padding:12px 14px;
-    margin-bottom:6px;
-    text-align:center;
+    background-color:#F9FAFB;
+    border-radius:8px;
+    padding:6px 10px;
+    margin-bottom:4px;
     border:1px solid #E1E4EA;
-    font-weight:600;
-    font-size:15px;
 ">
-  {size}
+  <div style="font-size:10px;color:#A3A8B3;">SIZE</div>
+  <div style="font-size:16px;font-weight:600;">{size}</div>
 </div>
 """,
-        unsafe_allow_html=True,
-    )
+                unsafe_allow_html=True,
+            )
 
-    # 數量輸入
-    size_inputs[size] = st.number_input(
-        label="",
-        min_value=0,
-        step=1,
-        key=f"qty_{size}",
-    )
+            # 數量輸入欄位：點一下即可輸入數字
+            size_inputs[size] = st.number_input(
+                label="",
+                min_value=0,
+                step=1,
+                key=f"qty_{size}",
+                label_visibility="collapsed",  # 不再多一行標籤
+            )
 
 # 計算總件數
 total_qty = sum(size_inputs.values())
+
 
 
     # 上傳設計
@@ -871,4 +880,5 @@ else:
                         "👉 立即開啟 LINE 傳送圖檔給阿默",
                         "https://line.me/ti/p/~@727jxovv",
                     )
+
 
