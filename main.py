@@ -14,7 +14,7 @@ try:
     from products import PRODUCT_CATALOG
 except ImportError:
     st.error("❌ 嚴重錯誤：找不到 products.py 檔案。請確保該檔案存在。")
-    PRODUCT_CATALOG = {} # 防止程式崩潰
+    PRODUCT_CATALOG = {} 
 
 # ==========================================
 # 0. 設定與全域變數
@@ -22,8 +22,6 @@ except ImportError:
 st.set_page_config(page_title="興彰 x 默默｜線上設計估價", page_icon="👕", layout="wide")
 
 SCOPES = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
-
-# 定義 assets 資料夾名稱
 ASSETS_DIR = "assets"
 
 @st.cache_resource
@@ -38,9 +36,34 @@ def connect_to_gsheet():
 
 sh = connect_to_gsheet()
 
-# 初始化 Session State
 if "designs" not in st.session_state: st.session_state["designs"] = {} 
 if "site_locked" not in st.session_state: st.session_state["site_locked"] = True 
+
+# ==========================================
+# [新增] 核心加速引擎：圖片處理快取
+# ==========================================
+@st.cache_data(show_spinner=False)
+def process_user_image(uploaded_file_bytes, apply_rb):
+    """
+    這是一個被快取保護的函數。
+    只要檔案內容沒變、去背選項沒變，Streamlit 就不會重新執行這裡的運算，
+    而是直接回傳上次算好的結果。
+    """
+    # 1. 讀取圖片
+    img = Image.open(io.BytesIO(uploaded_file_bytes)).convert("RGBA")
+    
+    # 2. 圖片瘦身 (加速關鍵)：如果寬度超過 1200px，縮小它
+    max_width = 1200
+    if img.width > max_width:
+        ratio = max_width / img.width
+        new_height = int(img.height * ratio)
+        img = img.resize((max_width, new_height))
+    
+    # 3. AI 去背運算
+    if apply_rb:
+        img = remove(img)
+        
+    return img
 
 # ==========================================
 # 1. 價格計算引擎
@@ -166,33 +189,28 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# --- 側邊欄 ---
 with st.sidebar:
-    # 修正路徑：指向 assets/owner.jpg
     owner_path = os.path.join(ASSETS_DIR, "owner.jpg")
     if os.path.exists(owner_path):
         st.image(owner_path, caption="阿默｜興彰企業")
     else:
-        st.info("💡 請上傳 owner.jpg 到 assets 資料夾")
+        st.info("💡 請上傳 owner.jpg 到 assets")
         
     st.markdown("### 👨‍🔧 關於我們")
     st.info("**興彰企業 x 默默文創**\n📍 彰化市中山路一段556巷23號之7")
     st.success("🆔 **LINE ID: @727jxovv**")
     
     with st.expander("🛠 檔案檢查員"):
-        # 檢查 assets 資料夾內的檔案
         if os.path.exists(ASSETS_DIR):
-            st.write(f"📁 {ASSETS_DIR} 內的檔案：")
             st.code(os.listdir(ASSETS_DIR))
         else:
-            st.error(f"❌ 找不到 {ASSETS_DIR} 資料夾！")
+            st.error(f"❌ 找不到 {ASSETS_DIR}")
         if st.button("重新整理"): st.rerun()
     
     if st.button("🔒 鎖定網站"):
         st.session_state["site_locked"] = True
         st.rerun()
 
-# --- 主畫面 ---
 st.title("📝 線上設計 & 自助估價")
 st.caption("🚀 AG21000 重磅棉T｜興彰企業 x 默默文創")
 
@@ -211,12 +229,10 @@ with c2:
     
     item = PRODUCT_CATALOG.get(s, {}).get(v, {})
 
-    # 顏色選擇
     color_options = item.get("colors", ["預設"]) 
     selected_color_name = st.selectbox("顏色", color_options)
     color_code = item.get("color_map", {}).get(selected_color_name, "")
     
-    # [關鍵修改] 圖片路徑邏輯：指向 assets 資料夾
     base_name = item.get("image_base", "")
     img_url_front = ""
     img_url_back = ""
@@ -224,8 +240,6 @@ with c2:
     if base_name and color_code:
         f_try = f"{base_name}_{color_code}_front"
         b_try = f"{base_name}_{color_code}_back"
-        
-        # 檢查 assets 資料夾內的 jpg/png
         f_path_jpg = os.path.join(ASSETS_DIR, f"{f_try}.jpg")
         f_path_png = os.path.join(ASSETS_DIR, f"{f_try}.png")
         b_path_jpg = os.path.join(ASSETS_DIR, f"{b_try}.jpg")
@@ -233,22 +247,17 @@ with c2:
 
         if os.path.exists(f_path_jpg): img_url_front = f_path_jpg
         elif os.path.exists(f_path_png): img_url_front = f_path_png
-        
         if os.path.exists(b_path_jpg): img_url_back = b_path_jpg
         elif os.path.exists(b_path_png): img_url_back = b_path_png
 
-    # --- 尺寸表與輸入 ---
     st.markdown("---")
     with st.expander("📏 查看尺寸表 (Size Chart)"):
-        # 修正路徑：指向 assets/size_chart.jpg
         size_chart_jpg = os.path.join(ASSETS_DIR, "size_chart.jpg")
         size_chart_png = os.path.join(ASSETS_DIR, "size_chart.png")
-
         if os.path.exists(size_chart_jpg): st.image(size_chart_jpg)
         elif os.path.exists(size_chart_png): st.image(size_chart_png)
-        else: st.warning("請上傳 size_chart.jpg 到 assets 資料夾")
+        else: st.warning("請上傳 size_chart.jpg 到 assets")
 
-    # 尺寸輸入
     sizes = ["S", "M", "L", "XL", "2XL", "3XL", "4XL", "5XL"]
     size_inputs = {}
     st.caption("請輸入各尺寸件數 (最低訂購 20 件)：")
@@ -260,48 +269,53 @@ with c2:
     
     total_qty = sum(size_inputs.values())
     
-    # --- 2. 創意設計區 (切換正反面) ---
+    # --- 2. 創意設計區 ---
     st.markdown("### 2. 創意設計 & 上傳")
     
     tab_f, tab_b = st.tabs(["👕 正面設計", "🔄 背面設計"])
     
+    # 封裝上傳邏輯
+    def render_upload_ui(pos_dict, side_prefix):
+        if not pos_dict:
+            st.warning("無可編輯位置")
+            return
+        
+        pk = st.selectbox(f"{side_prefix}位置", list(pos_dict.keys()), key=f"sel_{side_prefix}")
+        design_key = f"{side_prefix}_{pk}"
+        
+        # 這裡不處理圖片，只負責接收檔案
+        uf = st.file_uploader(f"上傳圖片 ({pk})", type=["png","jpg"], key=f"u_{design_key}")
+        
+        if uf:
+            # 存入 session_state 的不再是 image 物件，而是 raw bytes
+            # 這樣我們才能在後面使用 cache 機制
+            file_bytes = uf.getvalue()
+            
+            # 初始化參數
+            if design_key not in st.session_state["designs"]:
+                st.session_state["designs"][design_key] = {
+                    "bytes": file_bytes, # 存原始檔
+                    "rb": False, "sz": 150, "rot": 0, "ox": 0, "oy": 0
+                }
+            else:
+                # 更新檔案
+                st.session_state["designs"][design_key]["bytes"] = file_bytes
+
     with tab_f:
         st.info("可編輯：正中間、左胸、右胸、左臂、右臂")
-        pos_front_dict = item.get("pos_front", {})
-        if pos_front_dict:
-            pk_f = st.selectbox("正面位置", list(pos_front_dict.keys()), key="sel_f")
-            design_key_f = f"front_{pk_f}"
-            uf_f = st.file_uploader(f"上傳正面圖片 ({pk_f})", type=["png","jpg"], key=f"u_{design_key_f}")
-            if uf_f:
-                img = Image.open(uf_f).convert("RGBA")
-                st.session_state["designs"][design_key_f] = st.session_state["designs"].get(design_key_f, {"img": img, "rb": False, "sz": 150, "rot": 0, "ox": 0, "oy": 0})
-                st.session_state["designs"][design_key_f]["img"] = img
-        else:
-            st.warning("無可編輯的正面位置")
+        render_upload_ui(item.get("pos_front", {}), "front")
 
     with tab_b:
         st.info("可編輯：背後正中、左臂(後)、右臂(後)")
-        pos_back_dict = item.get("pos_back", {})
-        if pos_back_dict:
-            pk_b = st.selectbox("背面位置", list(pos_back_dict.keys()), key="sel_b")
-            design_key_b = f"back_{pk_b}"
-            uf_b = st.file_uploader(f"上傳背面圖片 ({pk_b})", type=["png","jpg"], key=f"u_{design_key_b}")
-            if uf_b:
-                img = Image.open(uf_b).convert("RGBA")
-                st.session_state["designs"][design_key_b] = st.session_state["designs"].get(design_key_b, {"img": img, "rb": False, "sz": 150, "rot": 0, "ox": 0, "oy": 0})
-                st.session_state["designs"][design_key_b]["img"] = img
-        else:
-            st.warning("無可編輯的背面位置")
+        render_upload_ui(item.get("pos_back", {}), "back")
 
-    # --- 判斷單雙面與價格 ---
     has_front_design = any(k.startswith("front_") for k in st.session_state["designs"].keys())
     has_back_design = any(k.startswith("back_") for k in st.session_state["designs"].keys())
     is_double_sided = has_front_design and has_back_design
-    
     unit_price = calculate_unit_price(total_qty, is_double_sided)
     total_price = unit_price * total_qty
 
-# --- 左欄：即時預覽 (含切換功能) ---
+# --- 左欄：即時預覽 ---
 with c1:
     view_side = st.radio("👁️ 預覽視角", ["正面 Front", "背面 Back"], horizontal=True, label_visibility="collapsed")
     current_side = "front" if "正面" in view_side else "back"
@@ -310,11 +324,9 @@ with c1:
     
     target_img_path = img_url_front if current_side == "front" else img_url_back
     
-    # 讀取圖片 (從 assets)
     if target_img_path and os.path.exists(target_img_path):
         base = Image.open(target_img_path).convert("RGBA")
     else:
-        # Fallback
         base = Image.new("RGBA", (600, 800), (220, 220, 220))
         draw_tmp = ImageDraw.Draw(base)
         try: font = ImageFont.truetype("arial.ttf", 30)
@@ -324,7 +336,7 @@ with c1:
 
     final = base.copy()
     
-    # 貼上設計圖
+    # 貼上設計圖 (加速版)
     for d_key, d_val in st.session_state["designs"].items():
         d_side, d_pos_name = d_key.split("_", 1)
         if d_side == current_side:
@@ -333,12 +345,13 @@ with c1:
             
             if pos_config:
                 tx, ty = pos_config["coords"]
-                paste_img = d_val["img"].copy()
                 
-                # [核心功能] AI 智能去背
-                if d_val["rb"]: 
-                    paste_img = remove(paste_img) 
+                # [核心加速] 呼叫快取函數處理圖片 (去背/縮圖)
+                # 只有當 d_val["bytes"] 或 d_val["rb"] 改變時，才會重新跑 AI
+                with st.spinner("處理中..." if d_val["rb"] else None):
+                    paste_img = process_user_image(d_val["bytes"], d_val["rb"])
                 
+                # 下面這些縮放、旋轉是輕量運算，不需要 cache，保留即時性
                 wr = d_val["sz"] / paste_img.width
                 paste_img = paste_img.resize((d_val["sz"], int(paste_img.height * wr)))
                 if d_val["rot"] != 0: paste_img = paste_img.rotate(d_val["rot"], expand=True)
@@ -357,10 +370,10 @@ with c1:
             d_val = st.session_state["designs"][d_key]
             
             with st.expander(f"🔧 {d_key.split('_')[1]}", expanded=True):
-                # 1. AI 去背開關 (優先顯示)
-                d_val["rb"] = st.checkbox("✨ AI 智能去背 (Remove Background)", value=d_val["rb"], key=f"rb_{d_key}")
+                # 1. AI 去背
+                d_val["rb"] = st.checkbox("✨ AI 智能去背 (快取加速版)", value=d_val["rb"], key=f"rb_{d_key}")
                 
-                # 2. 其他調整
+                # 2. 微調 (現在這些會非常順暢)
                 d_val["sz"] = st.slider("大小", 50, 400, d_val["sz"], key=f"sz_{d_key}")
                 d_val["rot"] = st.slider("旋轉", -180, 180, d_val["rot"], key=f"rot_{d_key}")
                 c1a, c2a = st.columns(2)
@@ -428,17 +441,19 @@ else:
                     
                     if sh: add_order_to_db(dt)
                     
-                    # 生成背面圖 (用於詢價單)
+                    # 生成詢價單 (需重新處理一次圖片以確保品質，這裡也使用 cache)
+                    # 注意：這裡邏輯簡化，僅使用正面第一張圖做示範
                     base_b = Image.open(img_url_back).convert("RGBA") if img_url_back and os.path.exists(img_url_back) else Image.new("RGBA", (600,800), (240,240,240))
                     final_back = base_b.copy()
+                    
+                    # 重新合成背面 (使用相同的 process_user_image 加速)
                     for d_key, d_val in st.session_state["designs"].items():
                         if d_key.startswith("back_"):
                             pk = d_key.split("_", 1)[1]
                             pos = item.get("pos_back", {}).get(pk)
                             if pos:
                                 tx, ty = pos["coords"]
-                                pi = d_val["img"].copy()
-                                if d_val["rb"]: pi = remove(pi)
+                                pi = process_user_image(d_val["bytes"], d_val["rb"])
                                 wr = d_val["sz"]/pi.width
                                 pi = pi.resize((d_val["sz"], int(pi.height*wr)))
                                 if d_val["rot"]!=0: pi=pi.rotate(d_val["rot"], expand=True)
