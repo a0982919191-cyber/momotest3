@@ -25,7 +25,6 @@ PRODUCT_CATALOG = {
                 "丈青 (Navy)": "Navy"
             },
             "image_base": "AG21000",
-            # --- 正面印刷位置 ---
             "pos_front": {
                 "正中間 (Center)": {"coords": (300, 400)},
                 "左胸 (Left Chest)": {"coords": (420, 280)},
@@ -33,7 +32,6 @@ PRODUCT_CATALOG = {
                 "左臂 (Left Sleeve)": {"coords": (520, 320)},
                 "右臂 (Right Sleeve)": {"coords": (80, 320)}
             },
-            # --- 背面印刷位置 ---
             "pos_back": {
                 "背後正中 (Center)": {"coords": (300, 350)},
                 "左臂-後 (L.Sleeve Back)": {"coords": (520, 320)},
@@ -62,38 +60,23 @@ if "designs" not in st.session_state: st.session_state["designs"] = {}
 if "site_locked" not in st.session_state: st.session_state["site_locked"] = True 
 
 # ==========================================
-# 1. 價格計算引擎 (AG21000 膠膜印刷版)
+# 1. 價格計算引擎
 # ==========================================
 def calculate_unit_price(qty, is_double_sided):
-    """
-    AG21000 膠膜印刷價格表
-    優勢：全彩不加價
-    """
-    if qty < 20:
-        return 0 # 未達起訂量
-    
-    # 基礎價格 (20-29件)
-    price_s = 410
-    price_d = 560
-    
-    # 折扣級距
+    if qty < 20: return 0 
+    price_s, price_d = 410, 560
     if 30 <= qty < 50:
-        price_s = 380 
-        price_d = 530 
+        price_s, price_d = 380, 530 
     elif 50 <= qty < 100:
-        price_s = 360 
-        price_d = 510
+        price_s, price_d = 360, 510
     elif 100 <= qty < 300:
-        price_s = 340 
-        price_d = 490
+        price_s, price_d = 340, 490
     elif qty >= 300:
-        price_s = 320 
-        price_d = 470
-        
+        price_s, price_d = 320, 470
     return price_d if is_double_sided else price_s
 
 # ==========================================
-# 2. 詢價單生成 (強調膠膜特性)
+# 2. 詢價單生成
 # ==========================================
 def generate_inquiry_image(img_front, img_back, data, design_list_text, unit_price):
     w, h = 1200, 1000 
@@ -130,7 +113,7 @@ def generate_inquiry_image(img_front, img_back, data, design_list_text, unit_pri
         "--------------------------------",
         f"Product: {data.get('series')}",
         f"Style: {data.get('variant')}",
-        f"Method: DTF/Vinyl (膠膜印刷)", # 標註印刷方式
+        f"Method: DTF/Vinyl (膠膜印刷)",
         f"Total Qty: {data.get('qty')} pcs",
         f"Est. Unit Price: NT$ {unit_price}",
     ]
@@ -171,7 +154,7 @@ def add_order_to_db(data):
     return False
 
 # ==========================================
-# 3. 密碼鎖 (隱藏提示)
+# 3. 密碼鎖
 # ==========================================
 def check_lock():
     if st.session_state["site_locked"]:
@@ -205,15 +188,14 @@ with st.sidebar:
     if os.path.exists("owner.jpg"):
         st.image("owner.jpg", caption="阿默｜興彰企業")
     else:
-        st.info("💡 請上傳 owner.jpg 到 GitHub")
+        st.info("💡 請上傳 owner.jpg")
         
     st.markdown("### 👨‍🔧 關於我們")
     st.info("**興彰企業 x 默默文創**\n📍 彰化市中山路一段556巷23號之7")
     st.success("🆔 **LINE ID: @727jxovv**")
     
-    with st.expander("🛠 檔案檢查員 (Debug)"):
-        files = os.listdir(".")
-        st.code(files)
+    with st.expander("🛠 檔案檢查員"):
+        st.code(os.listdir("."))
         if st.button("重新整理"): st.rerun()
     
     if st.button("🔒 鎖定網站"):
@@ -240,7 +222,7 @@ with c2:
     selected_color_name = st.selectbox("顏色", color_options)
     color_code = item.get("color_map", {}).get(selected_color_name, "")
     
-    # 圖片路徑邏輯 (智慧偵測 JPG/PNG)
+    # 圖片路徑邏輯
     base_name = item.get("image_base", "")
     img_url_front = ""
     img_url_back = ""
@@ -250,6 +232,7 @@ with c2:
         b_try = f"{base_name}_{color_code}_back"
         if os.path.exists(f"{f_try}.jpg"): img_url_front = f"{f_try}.jpg"
         elif os.path.exists(f"{f_try}.png"): img_url_front = f"{f_try}.png"
+        
         if os.path.exists(f"{b_try}.jpg"): img_url_back = f"{b_try}.jpg"
         elif os.path.exists(f"{b_try}.png"): img_url_back = f"{b_try}.png"
 
@@ -260,7 +243,7 @@ with c2:
         elif os.path.exists("size_chart.png"): st.image("size_chart.png")
         else: st.warning("請上傳 size_chart.jpg")
 
-    # 尺寸輸入 (S-5XL 順序)
+    # 尺寸輸入
     sizes = ["S", "M", "L", "XL", "2XL", "3XL", "4XL", "5XL"]
     size_inputs = {}
     st.caption("請輸入各尺寸件數 (最低訂購 20 件)：")
@@ -340,6 +323,7 @@ with c1:
 
     final = base.copy()
     
+    # 貼上設計圖
     for d_key, d_val in st.session_state["designs"].items():
         d_side, d_pos_name = d_key.split("_", 1)
         if d_side == current_side:
@@ -349,7 +333,11 @@ with c1:
             if pos_config:
                 tx, ty = pos_config["coords"]
                 paste_img = d_val["img"].copy()
-                if d_val["rb"]: paste_img = remove(paste_img) 
+                
+                # [AI 去背邏輯]
+                if d_val["rb"]: 
+                    # 避免重複運算，這裡只做處理
+                    paste_img = remove(paste_img) 
                 
                 wr = d_val["sz"] / paste_img.width
                 paste_img = paste_img.resize((d_val["sz"], int(paste_img.height * wr)))
@@ -361,12 +349,17 @@ with c1:
 
     st.image(final, use_container_width=True)
     
+    # 顯示該面已上傳的圖片調整器
     st.markdown("---")
     st.caption(f"調整 {current_side} 的設計：")
     for d_key in list(st.session_state["designs"].keys()):
         if d_key.startswith(current_side + "_"):
             d_val = st.session_state["designs"][d_key]
-            with st.expander(f"🔧 {d_key.split('_')[1]}", expanded=False):
+            # [重要] 這裡將勾選框加回來了！
+            with st.expander(f"🔧 {d_key.split('_')[1]}", expanded=True):
+                # 去背開關
+                d_val["rb"] = st.checkbox("✨ AI 智能去背 (Remove Background)", value=d_val["rb"], key=f"rb_{d_key}")
+                
                 d_val["sz"] = st.slider("大小", 50, 400, d_val["sz"], key=f"sz_{d_key}")
                 d_val["rot"] = st.slider("旋轉", -180, 180, d_val["rot"], key=f"rot_{d_key}")
                 c1a, c2a = st.columns(2)
