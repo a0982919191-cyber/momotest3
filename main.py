@@ -506,16 +506,56 @@ with c2:
         else:
             st.warning("請上傳 size_chart 圖檔到 assets 資料夾。")
 
-    sizes = ["S", "M", "L", "XL", "2XL", "3XL", "4XL", "5XL"]
-    size_inputs = {}
-    st.caption("請輸入各尺寸件數（最低訂購 20 件）：")
-    cols_size = st.columns(4)
-    for i, size in enumerate(sizes):
-        with cols_size[i % 4]:
-            size_inputs[size] = st.number_input(
-                size, min_value=0, step=1, key=f"qty_{size}"
-            )
-    total_qty = sum(size_inputs.values())
+# =========================
+# 尺寸輸入：卡片式 UI（S → 5XL 固定順序）
+# =========================
+sizes = [
+    ("S", ),
+    ("M", ),
+    ("L", ),
+    ("XL", ),
+    ("2XL", ),
+    ("3XL", ),
+    ("4XL",),
+    ("5XL",),
+]
+
+size_inputs = {}
+st.markdown("### 尺寸件數設定")
+st.caption("請依實際需求輸入各尺寸件數（**最低總數 20 件**）：")
+
+# 手機版考量：兩欄排列，捲動距離較短
+cols_size = st.columns(2)
+
+for i, (size, note) in enumerate(sizes):
+    with cols_size[i % 2]:
+        # 卡片感：上方標題 + 說明 + 數字輸入
+        st.markdown(
+            f"""
+<div style="
+    background-color:#F8F9FB;
+    border-radius:10px;
+    padding:10px 14px 6px 14px;
+    margin-bottom:10px;
+    border:1px solid #E3E6EC;
+">
+  <div style="font-weight:600;font-size:15px;margin-bottom:2px;">{size}</div>
+  <div style="font-size:11px;color:#8A8F99;margin-bottom:6px;">{note}</div>
+</div>
+""",
+            unsafe_allow_html=True,
+        )
+        # 數量輸入放在卡片下方，看起來像一組
+        size_inputs[size] = st.number_input(
+            label="",
+            min_value=0,
+            step=1,
+            key=f"qty_{size}",
+        )
+
+# 計算總件數
+total_qty = sum(size_inputs.values())
+
 
     # 上傳設計
     st.markdown("### 2️⃣ 創意設計 & 上傳")
@@ -811,6 +851,7 @@ else:
                         "👉 立即開啟 LINE 傳送圖檔給阿默",
                         "https://line.me/ti/p/~@727jxovv",
                     )
+
 
 
 
