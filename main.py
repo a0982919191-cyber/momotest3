@@ -9,11 +9,11 @@ import datetime
 import gspread
 from google.oauth2.service_account import Credentials
 
-# --- [關鍵] 從外部檔案匯入產品資料 ---
+# --- 從外部檔案匯入產品資料 ---
 try:
     from products import PRODUCT_CATALOG
 except ImportError:
-    st.error("❌ 嚴重錯誤：找不到 products.py 檔案。請確保該檔案存在。")
+    st.error("❌ 嚴重錯誤：找不到 products.py 檔案。")
     PRODUCT_CATALOG = {} 
 
 # ==========================================
@@ -36,11 +36,15 @@ def connect_to_gsheet():
 
 sh = connect_to_gsheet()
 
+# 初始化 Session State
 if "designs" not in st.session_state: st.session_state["designs"] = {} 
 if "site_locked" not in st.session_state: st.session_state["site_locked"] = True 
 
+# [新增] 用來控制上傳框重置的計數器
+if "uploader_keys" not in st.session_state: st.session_state["uploader_keys"] = {}
+
 # ==========================================
-# [新增] 核心加速引擎：圖片處理快取
+# 核心加速引擎：圖片處理快取
 # ==========================================
 @st.cache_data(show_spinner=False)
 def process_user_image(uploaded_file_bytes, apply_rb):
@@ -264,6 +268,7 @@ with c2:
     
     tab_f, tab_b = st.tabs(["👕 正面設計", "🔄 背面設計"])
     
+    # [關鍵修改] 上傳UI函數：加入刪除按鈕邏輯
     def render_upload_ui(pos_dict, side_prefix):
         if not pos_dict:
             st.warning("無可編輯位置")
@@ -271,8 +276,18 @@ with c2:
         
         pk = st.selectbox(f"{side_prefix}位置", list(pos_dict.keys()), key=f"sel_{side_prefix}")
         design_key = f"{side_prefix}_{pk}"
-        uf = st.file_uploader(f"上傳圖片 ({pk})", type=["png","jpg"], key=f"u_{design_key}")
         
+        # 取得該位置的上傳器版本 (若無則為0)
+        # 用這個版本號來控制 file_uploader 的 key，當版本號+1，上傳框就會重置
+        if design_key not in st.session_state["uploader_keys"]:
+            st.session_state["uploader_keys"][design_key] = 0
+            
+        uploader_key_version = st.session_state["uploader_keys"][design_key]
+        
+        # 顯示上傳器
+        uf = st.file_uploader(f"上傳圖片 ({pk})", type=["png","jpg"], key=f"u_{design_key}_{uploader_key_version}")
+        
+        # 若有選擇檔案，存入設計
         if uf:
             file_bytes = uf.getvalue()
             if design_key not in st.session_state["designs"]:
@@ -282,6 +297,17 @@ with c2:
                 }
             else:
                 st.session_state["designs"][design_key]["bytes"] = file_bytes
+        
+        # [新增] 如果該位置有設計圖，顯示刪除按鈕
+        if design_key in st.session_state["designs"]:
+            st.info(f"✅ {pk} 目前已有一張圖片")
+            # 這裡提供一個刪除按鈕
+            if st.button(f"🗑️ 刪除/重置 {pk} 的圖片", key=f"btn_clear_{design_key}"):
+                # 1. 刪除資料
+                del st.session_state["designs"][design_key]
+                # 2. 增加版本號，強迫上傳框重置
+                st.session_state["uploader_keys"][design_key] += 1
+                st.rerun()
 
     with tab_f:
         st.info("可編輯：正中間、左胸、右胸、左臂、右臂")
@@ -318,6 +344,7 @@ with c1:
 
     final = base.copy()
     
+    # 貼上設計圖
     for d_key, d_val in st.session_state["designs"].items():
         d_side, d_pos_name = d_key.split("_", 1)
         if d_side == current_side:
@@ -340,7 +367,7 @@ with c1:
 
     st.image(final, use_container_width=True)
     
-    # 調整工具區
+    # 調整工具區 (含調整確認按鈕)
     st.markdown("---")
     st.caption(f"調整 {current_side} 的設計：")
     for d_key in list(st.session_state["designs"].keys()):
@@ -348,7 +375,6 @@ with c1:
             d_val = st.session_state["designs"][d_key]
             
             with st.expander(f"🔧 {d_key.split('_')[1]}", expanded=True):
-                # [關鍵修改] 使用 st.form 建立表單，按下確認後才執行運算
                 with st.form(key=f"form_{d_key}"):
                     st.caption("調整後請按下方按鈕更新畫面")
                     
@@ -360,7 +386,6 @@ with c1:
                     with c1a: new_ox = st.number_input("X軸", -100, 100, d_val["ox"])
                     with c2a: new_oy = st.number_input("Y軸", -100, 100, d_val["oy"])
                     
-                    # 提交按鈕
                     submitted = st.form_submit_button("✅ 確認套用變更")
                     
                     if submitted:
@@ -371,9 +396,11 @@ with c1:
                         d_val["oy"] = new_oy
                         st.rerun()
 
-                # 刪除按鈕放在 Form 外面，避免混淆
+                # 左欄也可以刪除，邏輯同上傳區 (連動重置上傳框)
                 if st.button("🗑️ 刪除此圖案", key=f"del_{d_key}"):
                     del st.session_state["designs"][d_key]
+                    if d_key in st.session_state["uploader_keys"]:
+                        st.session_state["uploader_keys"][d_key] += 1
                     st.rerun()
 
 # --- 下方：報價與結帳區 ---
@@ -434,6 +461,7 @@ else:
                     
                     if sh: add_order_to_db(dt)
                     
+                    # 生成雙面預覽圖 (背後合成)
                     base_b = Image.open(img_url_back).convert("RGBA") if img_url_back and os.path.exists(img_url_back) else Image.new("RGBA", (600,800), (240,240,240))
                     final_back = base_b.copy()
                     
