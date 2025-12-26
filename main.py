@@ -9,7 +9,7 @@ import datetime
 import gspread
 from google.oauth2.service_account import Credentials
 
-# --- [關鍵] 從外部檔案匯入產品資料 ---
+# --- 從外部檔案匯入產品資料 ---
 try:
     from products import PRODUCT_CATALOG
 except ImportError:
@@ -24,7 +24,7 @@ st.set_page_config(page_title="興彰 x 默默｜線上設計估價", page_icon=
 SCOPES = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
 ASSETS_DIR = "assets"
 
-# [關鍵] 袖子對應表
+# [關鍵設定] 定義袖子的對應關係 (正面名稱 -> 背面名稱)
 SLEEVE_MAPPING = {
     "左臂 (Left Sleeve)": "左臂-後 (L.Sleeve Back)",
     "右臂 (Right Sleeve)": "右臂-後 (R.Sleeve Back)"
@@ -48,7 +48,7 @@ if "site_locked" not in st.session_state: st.session_state["site_locked"] = True
 if "uploader_keys" not in st.session_state: st.session_state["uploader_keys"] = {}
 
 # ==========================================
-# 核心加速引擎
+# 核心加速引擎：圖片處理快取
 # ==========================================
 @st.cache_data(show_spinner=False)
 def process_user_image(uploaded_file_bytes, apply_rb):
@@ -80,31 +80,41 @@ def calculate_unit_price(qty, is_double_sided):
     return price_d if is_double_sided else price_s
 
 # ==========================================
-# 2. 詢價單生成 (修復字型與黑底問題)
+# 2. 詢價單生成 (修復崩潰與黑底)
 # ==========================================
 def generate_inquiry_image(img_front, img_back, data, design_list_text, unit_price):
     w, h = 1200, 1000 
-    # 建立白底畫布
+    # 建立白底畫布 (RGB)
     card = Image.new("RGB", (w, h), "white")
     draw = ImageDraw.Draw(card)
     
-    # [關鍵修復] 載入中文字型
-    # 優先尋找根目錄或 assets 資料夾下的 NotoSansTC-Regular.ttf
-    font_path = "NotoSansTC-Regular.ttf"
-    if not os.path.exists(font_path):
-        font_path = os.path.join(ASSETS_DIR, "NotoSansTC-Regular.ttf")
+    # [關鍵修復 1] 強健的字型載入邏輯
+    # 會依序尋找：根目錄 -> assets資料夾 -> 預設字型
+    font_path = None
+    possible_paths = ["NotoSansTC-Regular.ttf", "assets/NotoSansTC-Regular.ttf"]
     
-    if os.path.exists(font_path):
-        font_L = ImageFont.truetype(font_path, 36)
-        font_M = ImageFont.truetype(font_path, 28)
+    for p in possible_paths:
+        if os.path.exists(p):
+            font_path = p
+            break
+            
+    if font_path:
+        try:
+            font_L = ImageFont.truetype(font_path, 36)
+            font_M = ImageFont.truetype(font_path, 28)
+        except Exception as e:
+            # 如果字型檔壞了，回退到預設
+            print(f"Font loading error: {e}")
+            font_L = ImageFont.load_default()
+            font_M = ImageFont.load_default()
     else:
-        # 如果真的找不到字型，只好用預設的（會亂碼，但在 console 印出警告）
-        print("❌ Warning: Font file not found. Chinese characters will be missing.")
+        # 找不到檔案，回退到預設
+        print("Font file not found, using default.")
         font_L = ImageFont.load_default()
         font_M = ImageFont.load_default()
     
-    # [關鍵修復] 貼上衣服圖片 (處理透明度)
-    # img_front 和 img_back 必須是 RGBA 才能正確去背
+    # [關鍵修復 2] 貼上衣服圖片 (確保透明背景不會變黑)
+    # 傳進來的 img_front/back 必須是 RGBA
     t_w = 400
     ratio = t_w / img_front.width
     t_h = int(img_front.height * ratio)
@@ -112,30 +122,31 @@ def generate_inquiry_image(img_front, img_back, data, design_list_text, unit_pri
     res_f = img_front.resize((t_w, t_h))
     res_b = img_back.resize((t_w, t_h))
     
-    # 使用遮罩貼上，這樣透明背景就會透出底下的白色，而不是變黑
+    # 使用 mask=res_f 來告訴 Pillow 哪裡是透明的
     card.paste(res_f, (100, 150), res_f if res_f.mode=='RGBA' else None)
     card.paste(res_b, (600, 150), res_b if res_b.mode=='RGBA' else None)
     
     # 繪製文字
-    draw.text((250, 100), "正面 Front", fill="#555", font=font_M)
-    draw.text((750, 100), "背面 Back", fill="#555", font=font_M)
+    # 如果是用預設字型，這裡可能會顯示亂碼，但至少不會當機
+    draw.text((250, 100), "Front View", fill="#555", font=font_M)
+    draw.text((750, 100), "Back View", fill="#555", font=font_M)
 
     start_y = 150 + t_h + 50
     col1_x = 100
     col2_x = 600
     
-    draw.text((col1_x, 40), f"興彰企業 x 默默文創 - 詢價單 ({datetime.date.today()})", fill="black", font=font_L)
+    draw.text((col1_x, 40), f"Design Quote - {datetime.date.today()}", fill="black", font=font_L)
 
     fields_L = [
-        f"客戶名稱: {data.get('name')}",
-        f"聯絡方式: {data.get('phone')} / {data.get('line')}",
+        f"Client: {data.get('name')}",
+        f"Contact: {data.get('phone')} / {data.get('line')}",
         "--------------------------------",
-        f"產品系列: {data.get('series')}",
-        f"款式顏色: {data.get('variant')}",
-        f"印刷工藝: DTF/Vinyl (數位膠膜)",
-        f"訂製數量: {data.get('qty')} 件",
-        f"預估單價: NT$ {unit_price}",
-        f"預估總價: NT$ {unit_price * data.get('qty'):,}", 
+        f"Product: {data.get('series')}",
+        f"Style: {data.get('variant')}",
+        f"Method: DTF/Vinyl",
+        f"Total Qty: {data.get('qty')} pcs",
+        f"Est. Unit Price: NT$ {unit_price}",
+        f"Est. Total: NT$ {unit_price * data.get('qty'):,}", 
     ]
     
     curr_y = start_y
@@ -144,10 +155,10 @@ def generate_inquiry_image(img_front, img_back, data, design_list_text, unit_pri
         curr_y += 40
 
     fields_R = [
-        "尺寸分佈:",
+        "Size Breakdown:",
         f"{data.get('size_breakdown')}",
         "--------------------------------",
-        "印刷位置:",
+        "Locations:",
     ]
     fields_R.extend(design_list_text)
     
@@ -157,7 +168,7 @@ def generate_inquiry_image(img_front, img_back, data, design_list_text, unit_pri
         curr_y += 40
         
     draw.rectangle([(0, h-80), (w, h)], fill="#ff4b4b")
-    draw.text((300, h-60), "請將此圖傳至 LINE: @727jxovv 由專人確認圖檔", fill="white", font=font_M)
+    draw.text((300, h-60), "Sent to LINE @727jxovv to confirm order!", fill="white", font=font_M)
         
     return card
 
@@ -487,7 +498,7 @@ else:
                     
                     if sh: add_order_to_db(dt)
                     
-                    # 生成雙面預覽圖 (修復版: 傳入 RGBA 避免黑底)
+                    # 生成雙面預覽圖 (修復版: 不轉 RGB，保留 RGBA)
                     base_b = Image.open(img_url_back).convert("RGBA") if img_url_back and os.path.exists(img_url_back) else Image.new("RGBA", (600,800), (240,240,240))
                     final_back = base_b.copy()
                     
@@ -514,7 +525,7 @@ else:
                             if d_val["rot"]!=0: pi=pi.rotate(d_val["rot"], expand=True)
                             final_back.paste(pi, (int(tx-pi.width/2+d_val["ox"]), int(ty-pi.height/2+d_val["oy"])), pi)
 
-                    # 這裡傳入的是 RGBA 的 final (正面) 和 final_back (背面)
+                    # [關鍵修改] 傳入 RGBA 圖片給生成器 (避免黑底)
                     receipt_img = generate_inquiry_image(final, final_back, dt, design_list, unit_price)
                     
                     st.success("✅ 正式報價單已生成！")
