@@ -9,39 +9,22 @@ import datetime
 import gspread
 from google.oauth2.service_account import Credentials
 
+# --- [關鍵] 從外部檔案匯入產品資料 ---
+try:
+    from products import PRODUCT_CATALOG
+except ImportError:
+    st.error("❌ 嚴重錯誤：找不到 products.py 檔案。請確保該檔案存在。")
+    PRODUCT_CATALOG = {} # 防止程式崩潰
+
 # ==========================================
-# 0. 產品目錄與設定 (AG21000 重磅棉T)
+# 0. 設定與全域變數
 # ==========================================
 st.set_page_config(page_title="興彰 x 默默｜線上設計估價", page_icon="👕", layout="wide")
 
-PRODUCT_CATALOG = {
-    "團體服系列": {
-        "AG21000 重磅棉T": {
-            "name": "AG21000 重磅棉T",
-            "colors": ["白 (White)", "黑 (Black)", "丈青 (Navy)"],
-            "color_map": {
-                "白 (White)": "White",
-                "黑 (Black)": "Black",
-                "丈青 (Navy)": "Navy"
-            },
-            "image_base": "AG21000",
-            "pos_front": {
-                "正中間 (Center)": {"coords": (300, 400)},
-                "左胸 (Left Chest)": {"coords": (420, 280)},
-                "右胸 (Right Chest)": {"coords": (180, 280)},
-                "左臂 (Left Sleeve)": {"coords": (520, 320)},
-                "右臂 (Right Sleeve)": {"coords": (80, 320)}
-            },
-            "pos_back": {
-                "背後正中 (Center)": {"coords": (300, 350)},
-                "左臂-後 (L.Sleeve Back)": {"coords": (520, 320)},
-                "右臂-後 (R.Sleeve Back)": {"coords": (80, 320)}
-            }
-        }
-    }
-}
-
 SCOPES = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
+
+# 定義 assets 資料夾名稱
+ASSETS_DIR = "assets"
 
 @st.cache_resource
 def connect_to_gsheet():
@@ -185,17 +168,24 @@ st.markdown("""
 
 # --- 側邊欄 ---
 with st.sidebar:
-    if os.path.exists("owner.jpg"):
-        st.image("owner.jpg", caption="阿默｜興彰企業")
+    # 修正路徑：指向 assets/owner.jpg
+    owner_path = os.path.join(ASSETS_DIR, "owner.jpg")
+    if os.path.exists(owner_path):
+        st.image(owner_path, caption="阿默｜興彰企業")
     else:
-        st.info("💡 請上傳 owner.jpg")
+        st.info("💡 請上傳 owner.jpg 到 assets 資料夾")
         
     st.markdown("### 👨‍🔧 關於我們")
     st.info("**興彰企業 x 默默文創**\n📍 彰化市中山路一段556巷23號之7")
     st.success("🆔 **LINE ID: @727jxovv**")
     
     with st.expander("🛠 檔案檢查員"):
-        st.code(os.listdir("."))
+        # 檢查 assets 資料夾內的檔案
+        if os.path.exists(ASSETS_DIR):
+            st.write(f"📁 {ASSETS_DIR} 內的檔案：")
+            st.code(os.listdir(ASSETS_DIR))
+        else:
+            st.error(f"❌ 找不到 {ASSETS_DIR} 資料夾！")
         if st.button("重新整理"): st.rerun()
     
     if st.button("🔒 鎖定網站"):
@@ -211,6 +201,10 @@ c1, c2 = st.columns([1.5, 1])
 
 with c2:
     st.markdown("### 1. 選擇產品 & 數量")
+    if not PRODUCT_CATALOG:
+        st.warning("⚠️ 產品資料庫是空的，請檢查 products.py")
+        st.stop()
+
     series_list = list(PRODUCT_CATALOG.keys())
     s = st.selectbox("系列", series_list)
     v = st.selectbox("款式", list(PRODUCT_CATALOG[s].keys()))
@@ -222,7 +216,7 @@ with c2:
     selected_color_name = st.selectbox("顏色", color_options)
     color_code = item.get("color_map", {}).get(selected_color_name, "")
     
-    # 圖片路徑邏輯
+    # [關鍵修改] 圖片路徑邏輯：指向 assets 資料夾
     base_name = item.get("image_base", "")
     img_url_front = ""
     img_url_back = ""
@@ -230,18 +224,29 @@ with c2:
     if base_name and color_code:
         f_try = f"{base_name}_{color_code}_front"
         b_try = f"{base_name}_{color_code}_back"
-        if os.path.exists(f"{f_try}.jpg"): img_url_front = f"{f_try}.jpg"
-        elif os.path.exists(f"{f_try}.png"): img_url_front = f"{f_try}.png"
         
-        if os.path.exists(f"{b_try}.jpg"): img_url_back = f"{b_try}.jpg"
-        elif os.path.exists(f"{b_try}.png"): img_url_back = f"{b_try}.png"
+        # 檢查 assets 資料夾內的 jpg/png
+        f_path_jpg = os.path.join(ASSETS_DIR, f"{f_try}.jpg")
+        f_path_png = os.path.join(ASSETS_DIR, f"{f_try}.png")
+        b_path_jpg = os.path.join(ASSETS_DIR, f"{b_try}.jpg")
+        b_path_png = os.path.join(ASSETS_DIR, f"{b_try}.png")
+
+        if os.path.exists(f_path_jpg): img_url_front = f_path_jpg
+        elif os.path.exists(f_path_png): img_url_front = f_path_png
+        
+        if os.path.exists(b_path_jpg): img_url_back = b_path_jpg
+        elif os.path.exists(b_path_png): img_url_back = b_path_png
 
     # --- 尺寸表與輸入 ---
     st.markdown("---")
     with st.expander("📏 查看尺寸表 (Size Chart)"):
-        if os.path.exists("size_chart.jpg"): st.image("size_chart.jpg")
-        elif os.path.exists("size_chart.png"): st.image("size_chart.png")
-        else: st.warning("請上傳 size_chart.jpg")
+        # 修正路徑：指向 assets/size_chart.jpg
+        size_chart_jpg = os.path.join(ASSETS_DIR, "size_chart.jpg")
+        size_chart_png = os.path.join(ASSETS_DIR, "size_chart.png")
+
+        if os.path.exists(size_chart_jpg): st.image(size_chart_jpg)
+        elif os.path.exists(size_chart_png): st.image(size_chart_png)
+        else: st.warning("請上傳 size_chart.jpg 到 assets 資料夾")
 
     # 尺寸輸入
     sizes = ["S", "M", "L", "XL", "2XL", "3XL", "4XL", "5XL"]
@@ -305,20 +310,16 @@ with c1:
     
     target_img_path = img_url_front if current_side == "front" else img_url_back
     
+    # 讀取圖片 (從 assets)
     if target_img_path and os.path.exists(target_img_path):
         base = Image.open(target_img_path).convert("RGBA")
     else:
-        try:
-            fallback_url = "https://placehold.co/600x800/EEE/31343C.png?text=Upload+Images+to+GitHub"
-            response = requests.get(fallback_url, stream=True)
-            base = Image.open(response.raw).convert("RGBA")
-        except:
-            base = Image.new("RGBA", (600, 800), (220, 220, 220))
-        
+        # Fallback
+        base = Image.new("RGBA", (600, 800), (220, 220, 220))
         draw_tmp = ImageDraw.Draw(base)
         try: font = ImageFont.truetype("arial.ttf", 30)
         except: font = ImageFont.load_default()
-        msg = f"Missing File:\n{f_try if current_side=='front' else b_try}.jpg"
+        msg = f"No Image in {ASSETS_DIR}:\n{f_try if current_side=='front' else b_try}.jpg"
         draw_tmp.text((50, 350), msg, fill="red", font=font)
 
     final = base.copy()
@@ -334,9 +335,8 @@ with c1:
                 tx, ty = pos_config["coords"]
                 paste_img = d_val["img"].copy()
                 
-                # [AI 去背邏輯]
+                # [核心功能] AI 智能去背
                 if d_val["rb"]: 
-                    # 避免重複運算，這裡只做處理
                     paste_img = remove(paste_img) 
                 
                 wr = d_val["sz"] / paste_img.width
@@ -349,17 +349,18 @@ with c1:
 
     st.image(final, use_container_width=True)
     
-    # 顯示該面已上傳的圖片調整器
+    # 調整工具區
     st.markdown("---")
     st.caption(f"調整 {current_side} 的設計：")
     for d_key in list(st.session_state["designs"].keys()):
         if d_key.startswith(current_side + "_"):
             d_val = st.session_state["designs"][d_key]
-            # [重要] 這裡將勾選框加回來了！
+            
             with st.expander(f"🔧 {d_key.split('_')[1]}", expanded=True):
-                # 去背開關
+                # 1. AI 去背開關 (優先顯示)
                 d_val["rb"] = st.checkbox("✨ AI 智能去背 (Remove Background)", value=d_val["rb"], key=f"rb_{d_key}")
                 
+                # 2. 其他調整
                 d_val["sz"] = st.slider("大小", 50, 400, d_val["sz"], key=f"sz_{d_key}")
                 d_val["rot"] = st.slider("旋轉", -180, 180, d_val["rot"], key=f"rot_{d_key}")
                 c1a, c2a = st.columns(2)
@@ -427,6 +428,7 @@ else:
                     
                     if sh: add_order_to_db(dt)
                     
+                    # 生成背面圖 (用於詢價單)
                     base_b = Image.open(img_url_back).convert("RGBA") if img_url_back and os.path.exists(img_url_back) else Image.new("RGBA", (600,800), (240,240,240))
                     final_back = base_b.copy()
                     for d_key, d_val in st.session_state["designs"].items():
