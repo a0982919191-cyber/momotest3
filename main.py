@@ -535,12 +535,7 @@ with c2:
     # =========================
     # 尺寸輸入：卡片式 UI（S → 5XL，無文字描述）
     # =========================
-# =========================
-# 尺寸輸入：卡片式 UI（單欄，順序固定）
-# =========================
-# =========================
-# 尺寸輸入：精簡卡片 UI（兩欄排列，順序固定）
-# =========================
+
 sizes = ["S", "M", "L", "XL", "2XL", "3XL", "4XL", "5XL"]
 
 size_inputs = {}
@@ -582,12 +577,13 @@ for left_size, right_size in rows:
             )
 
 # 計算總件數
-total_qty = sum(size_inputs.values())
+    # 計算總件數
+    total_qty = sum(size_inputs.values())
 
-
-
-    # 上傳設計
-st.markdown("### 2️⃣ 創意設計 & 上傳")
+    # =========================
+    # 2️⃣ 創意設計 & 上傳
+    # =========================
+    st.markdown("### 2️⃣ 創意設計 & 上傳")
 
     tab_f, tab_b = st.tabs(["👕 正面設計", "🔄 背面設計"])
 
@@ -595,12 +591,14 @@ st.markdown("### 2️⃣ 創意設計 & 上傳")
         """上傳介面 + 刪除按鈕"""
         if not pos_dict:
             return
+
         pk = st.selectbox(
             f"{'正面' if side_prefix=='front' else '背面'}位置",
             list(pos_dict.keys()),
             key=f"sel_{side_prefix}",
         )
         design_key = f"{side_prefix}_{pk}"
+
         if design_key not in st.session_state["uploader_keys"]:
             st.session_state["uploader_keys"][design_key] = 0
         uk = st.session_state["uploader_keys"][design_key]
@@ -626,24 +624,25 @@ st.markdown("### 2️⃣ 創意設計 & 上傳")
                 st.session_state["designs"][design_key]["bytes"] = file_bytes
 
         if design_key in st.session_state["designs"]:
-            if st.button(
-                f"🗑️ 刪除圖片（{pk}）", key=f"btn_clear_{design_key}"
-            ):
+            if st.button(f"🗑️ 刪除圖片（{pk}）", key=f"btn_clear_{design_key}"):
                 del st.session_state["designs"][design_key]
                 st.session_state["uploader_keys"][design_key] += 1
                 st.rerun()
 
+    # 在兩個 Tab 中呼叫上傳介面
     with tab_f:
         render_upload_ui(item.get("pos_front", {}), "front")
     with tab_b:
         render_upload_ui(item.get("pos_back", {}), "back")
 
+    # 判斷是否正反面皆有圖、計算單價與分級
     has_f = any(k.startswith("front_") for k in st.session_state["designs"].keys())
     has_b = any(k.startswith("back_") for k in st.session_state["designs"].keys())
     is_ds = has_f and has_b
     unit_price = calculate_unit_price(total_qty, is_ds)
     total_price = unit_price * total_qty
     plan_name, plan_desc = classify_plan(total_qty, is_ds)
+
 
 # =========================
 # 左側：即時預覽
