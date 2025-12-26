@@ -1,15 +1,16 @@
+# -*- coding: utf-8 -*-
 # main.py
+
 import streamlit as st
 import io
 import os
-import requests
-import pandas as pd
-from PIL import Image, ImageDraw, ImageFont
-from rembg import remove
 import datetime
+from pathlib import Path
+
 import gspread
 from google.oauth2.service_account import Credentials
-from pathlib import Path
+from PIL import Image, ImageDraw, ImageFont
+from rembg import remove
 
 # --- 從外部檔案匯入產品資料 ---
 try:
@@ -30,7 +31,7 @@ st.set_page_config(
 BASE_DIR = Path(__file__).resolve().parent
 ASSETS_DIR = BASE_DIR / "assets"
 
-# 字型偵測
+# 字型偵測（請準備 NotoSansTC-Regular.ttf）
 FONT_FILENAME = "NotoSansTC-Regular.ttf"
 font_path = None
 for p in [BASE_DIR / FONT_FILENAME, ASSETS_DIR / FONT_FILENAME]:
@@ -38,11 +39,15 @@ for p in [BASE_DIR / FONT_FILENAME, ASSETS_DIR / FONT_FILENAME]:
         font_path = str(p)
         break
 
-SCOPES = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
+SCOPES = [
+    "https://www.googleapis.com/auth/spreadsheets",
+    "https://www.googleapis.com/auth/drive",
+]
 
+# 正反袖口對應
 SLEEVE_MAPPING = {
     "左臂 (Left Sleeve)": "左臂-後 (L.Sleeve Back)",
-    "右臂 (Right Sleeve)": "右臂-後 (R.Sleeve Back)"
+    "右臂 (Right Sleeve)": "右臂-後 (R.Sleeve Back)",
 }
 
 # ==========================================
@@ -54,13 +59,14 @@ def connect_to_gsheet():
         if "gcp_service_account" in st.secrets:
             creds = Credentials.from_service_account_info(
                 st.secrets["gcp_service_account"],
-                scopes=SCOPES
+                scopes=SCOPES,
             )
             gc = gspread.authorize(creds)
             return gc.open("momo_db")
         return None
-    except:
+    except Exception:
         return None
+
 
 sh = connect_to_gsheet()
 
@@ -71,7 +77,7 @@ if "uploader_keys" not in st.session_state:
     st.session_state["uploader_keys"] = {}
 
 # ==========================================
-# 1. 核心影像處理引擎
+# 1. 影像處理引擎
 # ==========================================
 @st.cache_data(show_spinner=False)
 def process_user_image(uploaded_file_bytes, apply_rb):
@@ -87,9 +93,10 @@ def process_user_image(uploaded_file_bytes, apply_rb):
     return img
 
 # ==========================================
-# 2. 價格計算引擎 + 方案分級
+# 2. 價格計算 + 品牌方案分級
 # ==========================================
 def calculate_unit_price(qty, is_double_sided):
+    """按件數＆是否雙面計算單價"""
     if qty < 20:
         return 0
     price_s, price_d = 410, 560
@@ -106,7 +113,7 @@ def calculate_unit_price(qty, is_double_sided):
 
 def classify_plan(qty, is_double_sided):
     """
-    品牌分級邏輯：
+    品牌分級：
     - 20–49：團體款 Team Edition
     - 50–99：企業款 Corporate Edition
     - 100+ 或 雙面印刷：品牌款 Brand Edition
@@ -122,28 +129,48 @@ def classify_plan(qty, is_double_sided):
         desc = "適合公司制服、活動識別服，重視團隊感與一致的品牌觀感。"
     else:
         name = "團體款 Team Edition"
-        desc = "適合班服、社團、活動紀念服，以高CP值完成一次性專案。"
+        desc = "適合班服、社團、活動紀念服，以高 CP 值完成一次性專案。"
     return name, desc
 
 # ==========================================
-# 3. 詢價單生成 (品牌版)
+# 3. 詢價單生成（圖片）
 # ==========================================
+def get_fonts():
+    """取得四種字級的字型物件"""
+    if not font_path:
+        # 若真的找不到中文字型，就回退預設英文字型
+        return (
+            ImageFont.load_default(),
+            ImageFont.load_default(),
+            ImageFont.load_default(),
+            ImageFont.load_default(),
+        )
+    try:
+        font_Title = ImageFont.truetype(font_path, 48)
+        font_L = ImageFont.truetype(font_path, 32)
+        font_M = ImageFont.truetype(font_path, 24)
+        font_S = ImageFont.truetype(font_path, 20)
+        return font_Title, font_L, font_M, font_S
+    except Exception:
+        return (
+            ImageFont.load_default(),
+            ImageFont.load_default(),
+            ImageFont.load_default(),
+            ImageFont.load_default(),
+        )
+
+
 def generate_inquiry_image(img_front, img_back, data, design_list_text, unit_price):
+    """
+    產生最終詢價單圖片
+    data: 包含 name, phone, line, qty, size_breakdown, series, variant 等
+    design_list_text: 位置清單（已整理好的文字陣列）
+    """
     w, h = 1200, 1100
     card = Image.new("RGB", (w, h), "white")
     draw = ImageDraw.Draw(card)
 
-    # 字型載入
-    try:
-        if font_path:
-            font_Title = ImageFont.truetype(font_path, 48)
-            font_L = ImageFont.truetype(font_path, 32)
-            font_M = ImageFont.truetype(font_path, 24)
-            font_S = ImageFont.truetype(font_path, 20)
-        else:
-            raise FileNotFoundError
-    except:
-        font_Title = font_L = font_M = font_S = ImageFont.load_default()
+    font_Title, font_L, font_M, font_S = get_fonts()
 
     # Header
     draw.rectangle([(0, 0), (w, 120)], fill="#2c3e50")
@@ -151,13 +178,13 @@ def generate_inquiry_image(img_front, img_back, data, design_list_text, unit_pri
         (50, 35),
         "HSINN ZHANG x MOMO | BRAND ESTIMATE",
         fill="white",
-        font=font_Title
+        font=font_Title,
     )
     draw.text(
         (w - 350, 45),
         f"Date: {datetime.date.today()}",
         fill="#ecf0f1",
-        font=font_L
+        font=font_L,
     )
 
     # 商品預覽
@@ -167,25 +194,26 @@ def generate_inquiry_image(img_front, img_back, data, design_list_text, unit_pri
     res_f = img_front.resize((t_w, t_h))
     res_b = img_back.resize((t_w, t_h))
 
-    card.paste(res_f, (120, 150), res_f if res_f.mode == 'RGBA' else None)
-    card.paste(res_b, (660, 150), res_b if res_b.mode == 'RGBA' else None)
+    card.paste(res_f, (120, 150), res_f if res_f.mode == "RGBA" else None)
+    card.paste(res_b, (660, 150), res_b if res_b.mode == "RGBA" else None)
 
     draw.text((280, 120), "FRONT VIEW", fill="#7f8c8d", font=font_L)
     draw.text((820, 120), "BACK VIEW", fill="#7f8c8d", font=font_L)
 
-    # Info section
+    # Info 分隔線
     y_info = 150 + t_h + 40
     draw.line([(50, y_info), (w - 50, y_info)], fill="#bdc3c7", width=2)
 
+    # 左欄：客戶＋產品資訊
     col1_x = 80
     curr_y = y_info + 40
 
     fields_L = [
-        ("CLIENT NAME (客戶稱呼)", data.get('name')),
+        ("CLIENT NAME (客戶稱呼)", data.get("name")),
         ("CONTACT INFO (聯絡方式)", f"{data.get('phone')} / {data.get('line')}"),
-        ("PRODUCT SERIES (產品系列)", data.get('series')),
-        ("STYLE & COLOR (款式顏色)", data.get('variant')),
-        ("PRINTING METHOD (印刷工藝)", "DTF (Direct to Film 數位膠膜)")
+        ("PRODUCT SERIES (產品系列)", data.get("series")),
+        ("STYLE & COLOR (款式顏色)", data.get("variant")),
+        ("PRINTING METHOD (印刷工藝)", "DTF (Direct to Film 數位膠膜)"),
     ]
 
     for label, val in fields_L:
@@ -193,36 +221,55 @@ def generate_inquiry_image(img_front, img_back, data, design_list_text, unit_pri
         draw.text((col1_x, curr_y + 25), str(val), fill="#2c3e50", font=font_L)
         curr_y += 75
 
+    # 右欄：價格、尺寸、位置
     col2_x = 660
     curr_y = y_info + 40
 
-    # Price Box
-    draw.rectangle([(col2_x - 20, curr_y - 10), (w - 50, curr_y + 160)], fill="#f7f9f9")
-    draw.text((col2_x, curr_y), "ESTIMATED TOTAL (預估總計)", fill="#e74c3c", font=font_L)
+    # 價格框
+    draw.rectangle(
+        [(col2_x - 20, curr_y - 10), (w - 50, curr_y + 160)],
+        fill="#f7f9f9",
+    )
+    draw.text(
+        (col2_x, curr_y),
+        "ESTIMATED TOTAL (預估總計)",
+        fill="#e74c3c",
+        font=font_L,
+    )
     draw.text(
         (col2_x, curr_y + 40),
         f"NT$ {unit_price * data.get('qty'):,}",
         fill="#c0392b",
-        font=font_Title
+        font=font_Title,
     )
     draw.text(
         (col2_x, curr_y + 100),
         f"(@ NT$ {unit_price} x {data.get('qty')} pcs)",
         fill="#7f8c8d",
-        font=font_M
+        font=font_M,
     )
 
     curr_y += 180
-    draw.text((col2_x, curr_y), "SIZE BREAKDOWN (尺寸分佈)", fill="#95a5a6", font=font_S)
+    draw.text(
+        (col2_x, curr_y),
+        "SIZE BREAKDOWN (尺寸分佈)",
+        fill="#95a5a6",
+        font=font_S,
+    )
     draw.text(
         (col2_x, curr_y + 25),
-        str(data.get('size_breakdown')),
+        str(data.get("size_breakdown")),
         fill="#2c3e50",
-        font=font_M
+        font=font_M,
     )
 
     curr_y += 70
-    draw.text((col2_x, curr_y), "PRINT LOCATIONS (印刷位置)", fill="#95a5a6", font=font_S)
+    draw.text(
+        (col2_x, curr_y),
+        "PRINT LOCATIONS (印刷位置)",
+        fill="#95a5a6",
+        font=font_S,
+    )
 
     loc_y = curr_y + 25
     for item in design_list_text:
@@ -231,8 +278,10 @@ def generate_inquiry_image(img_front, img_back, data, design_list_text, unit_pri
 
     # Footer
     draw.rectangle([(0, h - 60), (w, h)], fill="#c0392b")
-    footer_text = "CONFIRMATION: Please send this image to LINE: @727jxovv to finalize your order."
-    draw.text((160, h - 45), footer_text, fill="white", font=font_M)
+    footer_text = (
+        "CONFIRMATION: 請將此圖片傳送至 LINE: @727jxovv 完成詢價確認。"
+    )
+    draw.text((120, h - 45), footer_text, fill="white", font=font_M)
 
     return card
 
@@ -243,20 +292,22 @@ def add_order_to_db(data):
     if sh:
         try:
             oid = f"ORD-{datetime.datetime.now().strftime('%Y%m%d%H%M%S')}"
-            sh.worksheet("orders").append_row([
-                oid,
-                data['name'],
-                data['contact'],
-                data['phone'],
-                data['line'],
-                f"{data['series']}-{data['variant']}",
-                data['qty'],
-                f"{data['size_breakdown']} | ${data['price']}",
-                data['promo_code'],
-                str(datetime.date.today())
-            ])
+            sh.worksheet("orders").append_row(
+                [
+                    oid,
+                    data["name"],
+                    data["contact"],
+                    data["phone"],
+                    data["line"],
+                    f"{data['series']}-{data['variant']}",
+                    data["qty"],
+                    f"{data['size_breakdown']} | ${data['price']}",
+                    data["promo_code"],
+                    str(datetime.date.today()),
+                ]
+            )
             return True
-        except:
+        except Exception:
             return False
     return False
 
@@ -272,10 +323,10 @@ st.markdown(
     h1, h2, h3 {font-family: 'Helvetica', sans-serif;}
 </style>
 """,
-    unsafe_allow_html=True
+    unsafe_allow_html=True,
 )
 
-# Sidebar 品牌資訊 / Debug
+# Sidebar：品牌資訊＆系統診斷
 with st.sidebar:
     owner_path = ASSETS_DIR / "owner.jpg"
     if owner_path.exists():
@@ -290,10 +341,17 @@ with st.sidebar:
     )
     st.success("🆔 **LINE ID: @727jxovv**")
 
+    if not font_path:
+        st.error(
+            "⚠ 找不到中文字型 NotoSansTC-Regular.ttf，"
+            "詢價單中的中文字可能顯示異常，"
+            "請將字型檔放到專案根目錄或 assets 資料夾。"
+        )
+
     with st.expander("🛠 系統診斷 (System Debug)"):
         st.write(f"專人字型路徑: `{font_path}`")
         if os.path.exists(str(ASSETS_DIR)):
-            st.write("📁 assets 資料夾狀態：正常")
+            st.write("📁 assets 資料夾狀態：")
             st.code(os.listdir(str(ASSETS_DIR)))
         if st.button("手動重新整理網頁"):
             st.rerun()
@@ -324,17 +382,22 @@ st.markdown(
 
 ---
 """,
-    unsafe_allow_html=False
+    unsafe_allow_html=False,
 )
 
-st.caption("🚀 AG21000 重磅棉T｜興彰企業 x 默默文創｜工廠直營．品牌級品質．透明估價")
+st.caption(
+    "🚀 AG21000 重磅棉T｜興彰企業 x 默默文創｜工廠直營．品牌級品質．透明估價"
+)
 
-# 主體兩欄：左預覽，右操作
+# 主體兩欄：左預覽，右設定
 c1, c2 = st.columns([1.5, 1])
 
-# --- 右側：產品 / 尺寸 / 圖檔上傳 ---
+# =========================
+# 右側：產品、尺寸、上傳
+# =========================
 with c2:
     st.markdown("### 1️⃣ 選擇產品 & 數量")
+
     if not PRODUCT_CATALOG:
         st.error("⚠️ 資料庫讀取失敗，請確認 products.py 是否在根目錄。")
         st.stop()
@@ -355,7 +418,6 @@ with c2:
     if base_name and color_code:
         f_try = f"{base_name}_{color_code}_front"
         b_try = f"{base_name}_{color_code}_back"
-
         for ext in [".png", ".jpg"]:
             fp = ASSETS_DIR / (f_try + ext)
             bp = ASSETS_DIR / (b_try + ext)
@@ -372,7 +434,7 @@ with c2:
         if sz_path.exists():
             st.image(str(sz_path))
         else:
-            st.warning("請上傳 size_chart 到 assets 資料夾")
+            st.warning("請上傳 size_chart 圖檔到 assets 資料夾。")
 
     sizes = ["S", "M", "L", "XL", "2XL", "3XL", "4XL", "5XL"]
     size_inputs = {}
@@ -381,30 +443,33 @@ with c2:
     for i, size in enumerate(sizes):
         with cols_size[i % 4]:
             size_inputs[size] = st.number_input(
-                f"{size}",
-                min_value=0,
-                step=1,
-                key=f"qty_{size}"
+                size, min_value=0, step=1, key=f"qty_{size}"
             )
     total_qty = sum(size_inputs.values())
 
-    # --- 上傳設計 ---
+    # 上傳設計
     st.markdown("### 2️⃣ 創意設計 & 上傳")
 
     tab_f, tab_b = st.tabs(["👕 正面設計", "🔄 背面設計"])
 
-    def render_upload_ui(pos_dict, side_prefix):
+    def render_upload_ui(pos_dict, side_prefix: str):
+        """上傳介面 + 刪除按鈕"""
         if not pos_dict:
             return
-        pk = st.selectbox(f"{side_prefix} 位置", list(pos_dict.keys()), key=f"sel_{side_prefix}")
+        pk = st.selectbox(
+            f"{'正面' if side_prefix=='front' else '背面'}位置",
+            list(pos_dict.keys()),
+            key=f"sel_{side_prefix}",
+        )
         design_key = f"{side_prefix}_{pk}"
         if design_key not in st.session_state["uploader_keys"]:
             st.session_state["uploader_keys"][design_key] = 0
         uk = st.session_state["uploader_keys"][design_key]
+
         uf = st.file_uploader(
-            f"上傳圖片 ({pk})",
+            f"上傳圖片（{pk}）",
             type=["png", "jpg"],
-            key=f"u_{design_key}_{uk}"
+            key=f"u_{design_key}_{uk}",
         )
         if uf:
             file_bytes = uf.getvalue()
@@ -416,12 +481,15 @@ with c2:
                     "sz": 150,
                     "rot": d_rot,
                     "ox": 0,
-                    "oy": 0
+                    "oy": 0,
                 }
             else:
                 st.session_state["designs"][design_key]["bytes"] = file_bytes
+
         if design_key in st.session_state["designs"]:
-            if st.button(f"🗑️ 刪除圖片 ({pk})", key=f"btn_clear_{design_key}"):
+            if st.button(
+                f"🗑️ 刪除圖片（{pk}）", key=f"btn_clear_{design_key}"
+            ):
                 del st.session_state["designs"][design_key]
                 st.session_state["uploader_keys"][design_key] += 1
                 st.rerun()
@@ -438,13 +506,15 @@ with c2:
     total_price = unit_price * total_qty
     plan_name, plan_desc = classify_plan(total_qty, is_ds)
 
-# --- 左側：即時預覽 ---
+# =========================
+# 左側：即時預覽
+# =========================
 with c1:
     view_side = st.radio(
         "👁️ 預覽視角",
         ["正面 Front", "背面 Back"],
         horizontal=True,
-        label_visibility="collapsed"
+        label_visibility="collapsed",
     )
     curr_side = "front" if "正面" in view_side else "back"
     st.markdown(f"#### 即時預覽：{v}｜{selected_color_name}")
@@ -480,38 +550,49 @@ with c1:
                 p_img = p_img.rotate(d_val["rot"], expand=True)
             final.paste(
                 p_img,
-                (int(tx - p_img.width / 2 + d_val["ox"]), int(ty - p_img.height / 2 + d_val["oy"])),
-                p_img
+                (
+                    int(tx - p_img.width / 2 + d_val["ox"]),
+                    int(ty - p_img.height / 2 + d_val["oy"]),
+                ),
+                p_img,
             )
 
     st.image(final, use_container_width=True)
     st.markdown("---")
 
-    # 各設計位置的微調區
+    # 當前視角可調整的設計區
     for d_key in list(st.session_state["designs"].keys()):
         if d_key.startswith(curr_side + "_"):
             d_val = st.session_state["designs"][d_key]
-            with st.expander(f"🔧 調整：{d_key.split('_')[1]}", expanded=True):
+            with st.expander(f"🔧 調整：{d_key.split('_', 1)[1]}", expanded=True):
                 with st.form(key=f"form_{d_key}"):
                     new_rb = st.checkbox("✨ AI 智能去背", value=d_val["rb"])
                     new_sz = st.slider("縮放大小", 50, 400, d_val["sz"])
                     new_rot = st.slider("旋轉角度", -180, 180, d_val["rot"])
                     c1a, c2a = st.columns(2)
                     with c1a:
-                        new_ox = st.number_input("左右微調 X", -100, 100, d_val["ox"])
+                        new_ox = st.number_input(
+                            "左右微調 X", -100, 100, d_val["ox"]
+                        )
                     with c2a:
-                        new_oy = st.number_input("上下微調 Y", -100, 100, d_val["oy"])
+                        new_oy = st.number_input(
+                            "上下微調 Y", -100, 100, d_val["oy"]
+                        )
                     if st.form_submit_button("✅ 確認套用"):
-                        d_val.update({
-                            "rb": new_rb,
-                            "sz": new_sz,
-                            "rot": new_rot,
-                            "ox": new_ox,
-                            "oy": new_oy
-                        })
+                        d_val.update(
+                            {
+                                "rb": new_rb,
+                                "sz": new_sz,
+                                "rot": new_rot,
+                                "ox": new_ox,
+                                "oy": new_oy,
+                            }
+                        )
                         st.rerun()
 
-# --- 報價區 + 品牌分級說明 ---
+# =========================
+# 報價區
+# =========================
 st.divider()
 st.markdown("### 3️⃣ 興彰嚴選報價 & 品牌分級")
 
@@ -533,7 +614,7 @@ else:
   <p style="font-size:12px;color:#666;">（依件數與正反面印製自動計算，實際金額以專人確認為準）</p>
 </div>
 """,
-            unsafe_allow_html=True
+            unsafe_allow_html=True,
         )
     with cv:
         st.markdown(
@@ -549,7 +630,9 @@ else:
     st.markdown("---")
     st.markdown("#### 4️⃣ 填寫聯絡資料，一鍵生成「品牌級正式詢價單」")
 
-    if st.checkbox("我接受此預估報價，並希望由專人協助確認與優化設計", value=False):
+    if st.checkbox(
+        "我接受此預估報價，並希望由專人協助確認與優化設計", value=False
+    ):
         with st.container():
             c1b, c2b = st.columns(2)
             with c1b:
@@ -559,11 +642,22 @@ else:
                 c_phone = st.text_input("手機號碼")
                 c_note = st.text_input("需求備註（顏色、風格、希望感覺等）")
 
-            if st.button("🚀 生成正式詢價單（品牌專業版）", type="primary", use_container_width=True):
+            if st.button(
+                "🚀 生成正式詢價單（品牌專業版）",
+                type="primary",
+                use_container_width=True,
+            ):
                 if not c_name or not c_line:
                     st.error("請至少填寫「稱呼 / 單位名稱」與「LINE ID」。")
+                elif not font_path:
+                    st.error(
+                        "目前缺少中文字型檔（NotoSansTC-Regular.ttf），"
+                        "為避免詢價單中文字錯誤，請先補上字型再重新生成。"
+                    )
                 else:
-                    sz_br = ", ".join([f"{k}*{v}" for k, v in size_inputs.items() if v > 0])
+                    sz_br = ", ".join(
+                        [f"{k}*{v}" for k, v in size_inputs.items() if v > 0]
+                    )
                     dt = {
                         "name": c_name,
                         "contact": c_name,
@@ -574,16 +668,17 @@ else:
                         "series": s,
                         "variant": f"{v} / {selected_color_name}",
                         "price": unit_price,
-                        "promo_code": "MomoPro"
+                        "promo_code": "MomoPro",
+                        "note": c_note,
                     }
                     if sh:
                         add_order_to_db(dt)
 
-                    # 生成背面圖並產出單據
-                    base_b = Image.open(img_url_back).convert("RGBA") if img_url_back else Image.new(
-                        "RGBA",
-                        (600, 800),
-                        (240, 240, 240)
+                    # 背面成品圖
+                    base_b = (
+                        Image.open(img_url_back).convert("RGBA")
+                        if img_url_back
+                        else Image.new("RGBA", (600, 800), (240, 240, 240))
                     )
                     final_b = base_b.copy()
                     for dk, dv in st.session_state["designs"].items():
@@ -592,28 +687,57 @@ else:
                         if ds == "back":
                             tp = item.get("pos_back", {}).get(dpn)
                         elif ds == "front" and dpn in SLEEVE_MAPPING:
-                            tp = item.get("pos_back", {}).get(SLEEVE_MAPPING[dpn])
+                            tp = item.get("pos_back", {}).get(
+                                SLEEVE_MAPPING[dpn]
+                            )
                         if tp:
                             tx, ty = tp["coords"]
                             pimg = process_user_image(dv["bytes"], dv["rb"])
                             wr = dv["sz"] / pimg.width
-                            pimg = pimg.resize((dv["sz"], int(pimg.height * wr)))
+                            pimg = pimg.resize(
+                                (dv["sz"], int(pimg.height * wr))
+                            )
                             if dv["rot"] != 0:
-                                pimg = pimg.rotate(dv["rot"], expand=True)
+                                pimg = pimg.rotate(
+                                    dv["rot"], expand=True
+                                )
                             final_b.paste(
                                 pimg,
-                                (int(tx - pimg.width / 2 + dv["ox"]), int(ty - pimg.height / 2 + dv["oy"])),
-                                pimg
+                                (
+                                    int(
+                                        tx
+                                        - pimg.width / 2
+                                        + dv["ox"]
+                                    ),
+                                    int(
+                                        ty
+                                        - pimg.height / 2
+                                        + dv["oy"]
+                                    ),
+                                ),
+                                pimg,
                             )
+
+                    # 整理印刷位置文字（比原本的 front_xxx 更友善）
+                    design_list = []
+                    for dk in st.session_state["designs"].keys():
+                        ds, dpn = dk.split("_", 1)
+                        side_label = "正面" if ds == "front" else "背面"
+                        design_list.append(f"{side_label}｜{dpn}")
 
                     receipt = generate_inquiry_image(
                         final,
                         final_b,
                         dt,
-                        [f"• {k}" for k in st.session_state["designs"].keys()],
-                        unit_price
+                        design_list,
+                        unit_price,
                     )
                     st.success("✅ 品牌級正式詢價單已生成！")
-                    st.image(receipt, caption="📩 請長按儲存此圖片，並傳給阿默 LINE: @727jxovv")
-                    st.link_button("👉 立即開啟 LINE 傳送圖檔給阿默", "https://line.me/ti/p/~@727jxovv")
-
+                    st.image(
+                        receipt,
+                        caption="📩 請長按儲存此圖片，並傳給阿默 LINE: @727jxovv",
+                    )
+                    st.link_button(
+                        "👉 立即開啟 LINE 傳送圖檔給阿默",
+                        "https://line.me/ti/p/~@727jxovv",
+                    )
