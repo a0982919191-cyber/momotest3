@@ -1,12 +1,12 @@
 # -*- coding: utf-8 -*-
 # main.py － 興彰 x 默默｜品牌級線上設計 & 自助估價系統
 
-import streamlit as st
 import io
 import os
 import datetime
 from pathlib import Path
 
+import streamlit as st
 import gspread
 from google.oauth2.service_account import Credentials
 from PIL import Image, ImageDraw, ImageFont
@@ -16,8 +16,10 @@ from rembg import remove
 try:
     from products import PRODUCT_CATALOG
 except ImportError:
-    st.error("❌ Critical Error: products.py not found.")
+    st.set_page_config(page_title="興彰 x 默默｜線上設計估價", page_icon="👕", layout="wide")
+    st.error("❌ Critical Error: 找不到 products.py，請確認檔案是否存在於專案根目錄。")
     PRODUCT_CATALOG = {}
+    st.stop()
 
 # ==========================================
 # 0. 基礎設定 & 路徑偵測
@@ -25,7 +27,7 @@ except ImportError:
 st.set_page_config(
     page_title="興彰 x 默默｜品牌級線上設計估價系統",
     page_icon="👕",
-    layout="wide"
+    layout="wide",
 )
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -160,18 +162,8 @@ def get_fonts():
 
 
 def load_logo():
-    """
-    從 assets 目錄載入 LOGO 做浮水印
-    目前指定檔名：LOGO.png
-    """
-    candidates = [
-        "LOGO.png",   # 指定檔名
-        "logo.png",
-        "logo.jpg",
-        "logo.jpeg",
-        "momo_logo.png",
-        "momo_logo.jpg",
-    ]
+    """從 assets 目錄載入 LOGO 做浮水印，檔名 LOGO.png"""
+    candidates = ["LOGO.png", "logo.png", "logo.jpg", "logo.jpeg"]
     for fn in candidates:
         p = ASSETS_DIR / fn
         if p.exists():
@@ -185,7 +177,6 @@ def load_logo():
 def generate_inquiry_image(img_front, img_back, data, design_list_text, unit_price):
     """
     日系文創質感版詢價單 + 品牌浮水印
-    （小字體 FRONT/BACK，置中顯示）
     """
     w, h = 1400, 1200
     card = Image.new("RGB", (w, h), "#F7F4EE")  # 暖米白
@@ -229,7 +220,7 @@ def generate_inquiry_image(img_front, img_back, data, design_list_text, unit_pri
         font=font_M,
     )
 
-    # 前後圖尺寸
+    # 前後圖
     fw = 520
     ratio = fw / img_front.width
     fh = int(img_front.height * ratio)
@@ -243,7 +234,7 @@ def generate_inquiry_image(img_front, img_back, data, design_list_text, unit_pri
     card.paste(res_f, (front_x, img_top), res_f)
     card.paste(res_b, (back_x, img_top), res_b)
 
-    # ======= FRONT / BACK 文字：較小字型並精準置中 =======
+    # FRONT / BACK 文字（縮小並置中）
     label_font = font_M
 
     front_text = "FRONT VIEW"
@@ -335,7 +326,7 @@ def generate_inquiry_image(img_front, img_back, data, design_list_text, unit_pri
         font=font_M,
     )
 
-    # 浮水印
+    # 浮水印 LOGO
     logo = load_logo()
     if logo is not None:
         max_logo_w = 260
@@ -346,12 +337,12 @@ def generate_inquiry_image(img_front, img_back, data, design_list_text, unit_pri
         if logo.mode != "RGBA":
             logo = logo.convert("RGBA")
         alpha = logo.split()[3]
-        alpha = alpha.point(lambda p: int(p * 0.18))
+        alpha = alpha.point(lambda p: int(p * 0.18))  # 18% 不透明
         logo.putalpha(alpha)
 
-        lx = w - max_logo_w - 60
-        ly = h - logo_h - 130
-        card.paste(logo, (lx, ly), logo)
+        lx_logo = w - max_logo_w - 60
+        ly_logo = h - logo_h - 130
+        card.paste(logo, (lx_logo, ly_logo), logo)
 
     return card
 
@@ -494,10 +485,6 @@ c1, c2 = st.columns([1.5, 1])
 with c2:
     st.markdown("### 1️⃣ 選擇產品 & 數量")
 
-    if not PRODUCT_CATALOG:
-        st.error("⚠️ 資料庫讀取失敗，請確認 products.py 是否在根目錄。")
-        st.stop()
-
     series_list = list(PRODUCT_CATALOG.keys())
     s = st.selectbox("系列", series_list)
     v = st.selectbox("款式", list(PRODUCT_CATALOG[s].keys()))
@@ -532,27 +519,21 @@ with c2:
         else:
             st.warning("請上傳 size_chart 圖檔到 assets 資料夾。")
 
-    # =========================
-    # 尺寸輸入：卡片式 UI（S → 5XL，無文字描述）
-    # =========================
+    # 尺寸輸入：兩欄卡片 UI
+    sizes = ["S", "M", "L", "XL", "2XL", "3XL", "4XL", "5XL"]
 
-sizes = ["S", "M", "L", "XL", "2XL", "3XL", "4XL", "5XL"]
+    size_inputs = {}
+    st.markdown("### 尺寸件數設定")
+    st.caption("請依實際需求輸入各尺寸件數（**最低總數 20 件**）：")
 
-size_inputs = {}
-st.markdown("### 尺寸件數設定")
-st.caption("請依實際需求輸入各尺寸件數（**最低總數 20 件**）：")
+    rows = [("S", "M"), ("L", "XL"), ("2XL", "3XL"), ("4XL", "5XL")]
 
-# 每列兩個尺寸：S/M、L/XL、2XL/3XL、4XL/5XL
-rows = [("S", "M"), ("L", "XL"), ("2XL", "3XL"), ("4XL", "5XL")]
-
-for left_size, right_size in rows:
-    cols = st.columns(2)
-
-    for col, size in zip(cols, (left_size, right_size)):
-        with col:
-            # 縮小版尺寸卡片：上方淡淡「SIZE」，下方是尺寸
-            st.markdown(
-                f"""
+    for left_size, right_size in rows:
+        cols = st.columns(2)
+        for col, size in zip(cols, (left_size, right_size)):
+            with col:
+                st.markdown(
+                    f"""
 <div style="
     background-color:#F9FAFB;
     border-radius:8px;
@@ -564,25 +545,20 @@ for left_size, right_size in rows:
   <div style="font-size:16px;font-weight:600;">{size}</div>
 </div>
 """,
-                unsafe_allow_html=True,
-            )
+                    unsafe_allow_html=True,
+                )
 
-            # 數量輸入欄位：點一下即可輸入數字
-            size_inputs[size] = st.number_input(
-                label="",
-                min_value=0,
-                step=1,
-                key=f"qty_{size}",
-                label_visibility="collapsed",  # 不再多一行標籤
-            )
+                size_inputs[size] = st.number_input(
+                    label="",
+                    min_value=0,
+                    step=1,
+                    key=f"qty_{size}",
+                    label_visibility="collapsed",
+                )
 
-# 計算總件數
-    # 計算總件數
     total_qty = sum(size_inputs.values())
 
-    # =========================
-    # 2️⃣ 創意設計 & 上傳
-    # =========================
+    # 2 創意設計 & 上傳
     st.markdown("### 2️⃣ 創意設計 & 上傳")
 
     tab_f, tab_b = st.tabs(["👕 正面設計", "🔄 背面設計"])
@@ -629,20 +605,17 @@ for left_size, right_size in rows:
                 st.session_state["uploader_keys"][design_key] += 1
                 st.rerun()
 
-    # 在兩個 Tab 中呼叫上傳介面
     with tab_f:
         render_upload_ui(item.get("pos_front", {}), "front")
     with tab_b:
         render_upload_ui(item.get("pos_back", {}), "back")
 
-    # 判斷是否正反面皆有圖、計算單價與分級
     has_f = any(k.startswith("front_") for k in st.session_state["designs"].keys())
     has_b = any(k.startswith("back_") for k in st.session_state["designs"].keys())
     is_ds = has_f and has_b
     unit_price = calculate_unit_price(total_qty, is_ds)
     total_price = unit_price * total_qty
     plan_name, plan_desc = classify_plan(total_qty, is_ds)
-
 
 # =========================
 # 左側：即時預覽
@@ -698,7 +671,6 @@ with c1:
     st.image(final, use_container_width=True)
     st.markdown("---")
 
-    # 當前視角可調整的設計區
     for d_key in list(st.session_state["designs"].keys()):
         if d_key.startswith(curr_side + "_"):
             d_val = st.session_state["designs"][d_key]
@@ -812,7 +784,6 @@ else:
                     if sh:
                         add_order_to_db(dt)
 
-                    # 背面成品圖
                     base_b = (
                         Image.open(img_url_back).convert("RGBA")
                         if img_url_back
@@ -856,7 +827,6 @@ else:
                                 pimg,
                             )
 
-                    # 整理印刷位置文字
                     design_list = []
                     for dk in st.session_state["designs"].keys():
                         ds, dpn = dk.split("_", 1)
@@ -879,6 +849,3 @@ else:
                         "👉 立即開啟 LINE 傳送圖檔給阿默",
                         "https://line.me/ti/p/~@727jxovv",
                     )
-
-
-
