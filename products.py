@@ -69,13 +69,14 @@ PRODUCT_CATALOG = {
             
             # 5. 背面印刷位置
             "pos_back": {
-                "背後正中 (Center)": {"coords": (480, 320)},
+                "背後正中 (Center)": {"coords": (500, 320)},
                 "左臂-後 (L.Sleeve Back)": {"coords": (520, 320)},
                 "右臂-後 (R.Sleeve Back)": {"coords": (80, 320)}
             }
         }
     }
 }
+
 
 
 
