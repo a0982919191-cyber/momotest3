@@ -63,8 +63,8 @@ PRODUCT_CATALOG = {
                 "正中間 (Center)": {"coords": (380, 270)},
                 "左胸 (Left Chest)": {"coords": (450, 230)},  
                 "右胸 (Right Chest)": {"coords": (300, 230)}, 
-                "左臂 (Left Sleeve)": {"coords": (520, 320)}, 
-                "右臂 (Right Sleeve)": {"coords": (80, 320)}   
+                "左臂 (Left Sleeve)": {"coords": (520, 230)}, 
+                "右臂 (Right Sleeve)": {"coords": (80, 230)}   
             },
             
             # 5. 背面印刷位置
@@ -76,6 +76,7 @@ PRODUCT_CATALOG = {
         }
     }
 }
+
 
 
 
