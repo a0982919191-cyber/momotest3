@@ -461,7 +461,6 @@ st.markdown(
 
 ---
 
-""",
     unsafe_allow_html=False,
 )
 
@@ -842,5 +841,6 @@ else:
                         "👉 立即開啟 LINE 傳送圖檔給阿默",
                         "https://line.me/ti/p/~@727jxovv",
                     )
+
 
 
