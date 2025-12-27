@@ -3,6 +3,7 @@
 
 import io
 import os
+import json
 import datetime
 from pathlib import Path
 
@@ -53,19 +54,23 @@ SLEEVE_MAPPING = {
 }
 
 # ==========================================
-# 連線 Google Sheet
+# 連線 Google Sheet（支援 st.secrets 或環境變數）
 # ==========================================
 @st.cache_resource
 def connect_to_gsheet():
     try:
+        # Streamlit Cloud：st.secrets["gcp_service_account"]
         if "gcp_service_account" in st.secrets:
-            creds = Credentials.from_service_account_info(
-                st.secrets["gcp_service_account"],
-                scopes=SCOPES,
-            )
-            gc = gspread.authorize(creds)
-            return gc.open("momo_db")
-        return None
+            info = st.secrets["gcp_service_account"]
+        # 例如 Railway：環境變數 GCP_SERVICE_ACCOUNT（字串 JSON）
+        elif "GCP_SERVICE_ACCOUNT" in os.environ:
+            info = json.loads(os.environ["GCP_SERVICE_ACCOUNT"])
+        else:
+            return None
+
+        creds = Credentials.from_service_account_info(info, scopes=SCOPES)
+        gc = gspread.authorize(creds)
+        return gc.open("momo_db")
     except Exception:
         return None
 
@@ -98,7 +103,9 @@ def process_user_image(uploaded_file_bytes, apply_rb):
 # 2. 價格計算 + 品牌方案分級
 # ==========================================
 def calculate_unit_price(qty, is_double_sided):
-    """按件數＆是否雙面計算單價"""
+    """
+    一般棉T（例如 AG21000）價格：按件數＆是否雙面計算單價
+    """
     if qty < 20:
         return 0
     price_s, price_d = 410, 560
@@ -111,6 +118,40 @@ def calculate_unit_price(qty, is_double_sided):
     elif qty >= 300:
         price_s, price_d = 320, 470
     return price_d if is_double_sided else price_s
+
+
+def calculate_cp101_price(size_counts: dict):
+    """
+    CP101 吸濕排汗團體服價格計算：
+    - 依總件數判斷級距（10–30, 30–100, 100 以上）
+    - 小尺碼（XS–2XL）與大尺碼（3XL–5XL）單價不同
+    - 回傳：(平均單價, 總價)
+    """
+    total_qty = sum(size_counts.values())
+    if total_qty < 20:
+        return 0, 0  # 系統最低訂購量 20 件
+
+    small_sizes = ["XS", "S", "M", "L", "XL", "2XL"]
+    big_sizes = ["3XL", "4XL", "5XL"]
+
+    small_qty = sum(size_counts.get(s, 0) for s in small_sizes)
+    big_qty = sum(size_counts.get(s, 0) for s in big_sizes)
+
+    # 依總件數決定單價
+    if total_qty <= 30:
+        small_price = 255
+        big_price = 265
+    elif total_qty <= 100:
+        small_price = 245
+        big_price = 255
+    else:  # >= 100
+        small_price = 240
+        big_price = 250
+
+    total_price = small_qty * small_price + big_qty * big_price
+    avg_unit_price = round(total_price / total_qty) if total_qty > 0 else 0
+
+    return avg_unit_price, total_price
 
 
 def classify_plan(qty, is_double_sided):
@@ -162,7 +203,7 @@ def get_fonts():
 
 
 def load_logo():
-    """從 assets 目錄載入 LOGO 做浮水印，檔名 LOGO.png"""
+    """從 assets 目錄載入 LOGO 做浮水印"""
     candidates = ["LOGO.png", "logo.png", "logo.jpg", "logo.jpeg"]
     for fn in candidates:
         p = ASSETS_DIR / fn
@@ -234,7 +275,7 @@ def generate_inquiry_image(img_front, img_back, data, design_list_text, unit_pri
     card.paste(res_f, (front_x, img_top), res_f)
     card.paste(res_b, (back_x, img_top), res_b)
 
-    # FRONT / BACK 文字（縮小並置中）
+    # FRONT / BACK 標示
     label_font = font_M
 
     front_text = "FRONT VIEW"
@@ -296,7 +337,7 @@ def generate_inquiry_image(img_front, img_back, data, design_list_text, unit_pri
     )
     draw.text(
         (rx, py + 100),
-        f"＠ NT$ {unit_price} × {data['qty']} pcs",
+        f"＠ NT$ {data['price']} × {data['qty']} pcs",
         fill="#A27E6F",
         font=font_M,
     )
@@ -337,7 +378,7 @@ def generate_inquiry_image(img_front, img_back, data, design_list_text, unit_pri
         if logo.mode != "RGBA":
             logo = logo.convert("RGBA")
         alpha = logo.split()[3]
-        alpha = alpha.point(lambda p: int(p * 0.18))  # 18% 不透明
+        alpha = alpha.point(lambda p: int(p * 0.18))  # 約 18% 不透明
         logo.putalpha(alpha)
 
         lx_logo = w - max_logo_w - 60
@@ -431,10 +472,7 @@ st.markdown(
 - **設計導向，不只是報價表**：先看到成品長什麼樣，再談單價與數量。  
 - **品牌一致性控管**：款式、顏色、印刷位置都有紀錄，下次追加不會「長得不一樣」。  
 - **溝通更有效率**：版型示意＋正式詢價單，一張圖就能和夥伴、長官、客戶說明企劃。  
-- **價格透明可預期**：依件數與正反面印製，自動對應團體款 / 企業款 / 品牌款級距，不用猜。  
-
-> 如果你習慣「先看感覺，再談預算」，  
-> 這套工具就是幫你把感覺與數字，整理成一份看得懂、傳得出去的「品牌級估價單」。
+- **價格透明可預期**：依件數與正反面印製，自動對應團體款 / 企業款 / 品牌款級距，不用猜。 
 
 ---
 
@@ -442,17 +480,17 @@ st.markdown(
 
 - 想做 **班服 / 社團服 / 活動服**，希望照片、實體都能呈現品牌感的你  
 - 公司行號、品牌團隊，希望 **制服與形象服** 有一致的視覺語言與質感  
-- 創作者 / IP / 自媒體，希望用 **限量 TEE / 週邊服飾** 做一波有記憶點的策展企劃  
+- 創作者 / IP / 自媒體，希望用 **限量 TEE / 週邊服飾** 做一波有記憶點的策展企劃 
 
 ---
 
 ### ✅ 使用流程（4 個步驟）
 
 1. **選擇產品 & 數量**  
-   選定需求款式及數量（系統會自動檢查是否達最低出貨標準）。  
+   選定需求款式及數（系統會自動檢查是否達最低出貨標準）。  
 
-2. **上傳設計檔案**  
-   上傳 LOGO / 插畫 / 完整設計稿，可勾選「AI 智能去背」，即時預覽正反面與袖口排版位置。  
+2. **上傳設計圖檔**  
+   上傳 LOGO / 完整設計稿，可勾選「AI 智能去背」，即時預覽正反面與袖口位置。  
    
 3. **查看預估報價與方案分級**  
    系統依「件數 × 正反面印製」計算單價與總價，並標示為  
@@ -461,13 +499,12 @@ st.markdown(
 4. **生成正式詢價單（品牌級版面）**  
    一鍵輸出含成品預覽、尺寸分佈、印刷位置、總價的專業詢價圖，  
    直接存圖後傳給阿默 LINE：@727jxovv，由專人協助調整細節與確認交期。
-""",
-    unsafe_allow_html=False,
+
+---
+"""
 )
 
-st.caption(
-    "🚀 興彰企業 x 默默文創｜工廠直營．品牌級品質．透明估價"
-)
+st.caption("🚀 興彰企業 x 默默文創｜工廠直營．品牌級品質．透明估價")
 
 # 主體兩欄：左預覽，右設定
 c1, c2 = st.columns([1.5, 1])
@@ -478,10 +515,16 @@ c1, c2 = st.columns([1.5, 1])
 with c2:
     st.markdown("### 1️⃣ 選擇產品 & 數量")
 
+    if not PRODUCT_CATALOG:
+        st.error("⚠️ 資料庫讀取失敗，請確認 products.py 是否在根目錄。")
+        st.stop()
+
     series_list = list(PRODUCT_CATALOG.keys())
     s = st.selectbox("系列", series_list)
     v = st.selectbox("款式", list(PRODUCT_CATALOG[s].keys()))
     item = PRODUCT_CATALOG.get(s, {}).get(v, {})
+
+    st.caption(f"🚀 {s}｜{v}｜興彰企業 x 默默文創")
 
     color_options = item.get("colors", ["預設"])
     selected_color_name = st.selectbox("顏色", color_options)
@@ -512,9 +555,7 @@ with c2:
         else:
             st.warning("請上傳 size_chart 圖檔到 assets 資料夾。")
 
-    # 尺寸輸入：兩欄卡片 UI
-    sizes = ["S", "M", "L", "XL", "2XL", "3XL", "4XL", "5XL"]
-
+    # 尺寸輸入
     size_inputs = {}
     st.markdown("### 尺寸件數設定")
     st.caption("請依實際需求輸入各尺寸件數（**最低總數 20 件**）：")
@@ -606,8 +647,14 @@ with c2:
     has_f = any(k.startswith("front_") for k in st.session_state["designs"].keys())
     has_b = any(k.startswith("back_") for k in st.session_state["designs"].keys())
     is_ds = has_f and has_b
-    unit_price = calculate_unit_price(total_qty, is_ds)
-    total_price = unit_price * total_qty
+
+    # CP101 用專屬價，其餘用一般價
+    if "CP101" in v:
+        unit_price, total_price = calculate_cp101_price(size_inputs)
+    else:
+        unit_price = calculate_unit_price(total_qty, is_ds)
+        total_price = unit_price * total_qty
+
     plan_name, plan_desc = classify_plan(total_qty, is_ds)
 
 # =========================
@@ -714,7 +761,7 @@ else:
   <h2>NT$ {unit_price}</h2>
   <hr>
   <h3>總計：NT$ {total_price:,}</h3>
-  <p style="font-size:12px;color:#666;">（依件數與正反面印製自動計算，實際金額以專人確認為準）</p>
+  <p style="font-size:12px;color:#666;">（依件數與尺寸級距自動計算，實際金額以專人確認為準）</p>
 </div>
 """,
             unsafe_allow_html=True,
