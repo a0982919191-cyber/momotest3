@@ -142,7 +142,7 @@ PRODUCT_CATALOG = {
             },
 
             "pos_front": {
-                "正中間 (Center)": {"coords": (300, 360)},
+                "正中間 (Center)": {"coords": (380, 270)},
                 "左胸 (Left Chest)": {"coords": (220, 340)},
                 "右胸 (Right Chest)": {"coords": (380, 340)},
             },
@@ -154,3 +154,4 @@ PRODUCT_CATALOG = {
         },
     }
 }
+
