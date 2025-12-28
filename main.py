@@ -11,7 +11,21 @@ import streamlit as st
 import gspread
 from google.oauth2.service_account import Credentials
 from PIL import Image, ImageDraw, ImageFont
+import os
+import streamlit as st
 
+# 🕵️ 自動定位專案根目錄 (不管是在電腦還是雲端)
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+
+# 🎯 設定各個資料夾的絕對路徑
+ASSETS_DIR = os.path.join(BASE_DIR, "assets")
+FONT_PATH = os.path.join(BASE_DIR, "NotoSansTC-Regular.ttf")
+
+# 系統診斷 (Debug) - 只在找不到檔案時顯示
+if not os.path.exists(ASSETS_DIR):
+    st.error(f"❌ 找不到 assets 資料夾！路徑應為: {ASSETS_DIR}")
+if not os.path.exists(FONT_PATH):
+    st.warning(f"⚠️ 找不到字型檔，將使用系統預設字型。")
 # rembg 可能在某些部署環境沒有裝，容錯
 try:
     from rembg import remove
@@ -781,3 +795,4 @@ else:
                 st.success("✅ 品牌級正式詢價單已生成！")
                 st.image(receipt, caption="📩 請長按儲存此圖片，並傳給阿默 LINE: @727jxovv")
                 st.link_button("👉 立即開啟 LINE 傳送圖檔給阿默", "https://line.me/ti/p/~@727jxovv")
+
