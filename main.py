@@ -13,6 +13,7 @@ from google.oauth2.service_account import Credentials
 from PIL import Image, ImageDraw, ImageFont
 from rembg import remove
 
+
 # --- 從外部檔案匯入產品資料 ---
 try:
     from products import PRODUCT_CATALOG
@@ -20,6 +21,7 @@ except ImportError:
     st.set_page_config(page_title="興彰 x 默默｜線上設計估價", page_icon="👕", layout="wide")
     st.error("❌ Critical Error: 找不到 products.py，請確認檔案是否存在於專案根目錄。")
     st.stop()
+
 
 # ==========================================
 # 0. 基礎設定 & 路徑偵測
@@ -52,6 +54,7 @@ SLEEVE_MAPPING = {
     "右臂 (Right Sleeve)": "右臂-後 (R.Sleeve Back)",
 }
 
+
 # ==========================================
 # 連線 Google Sheet（支援 st.secrets 或環境變數）
 # ==========================================
@@ -71,6 +74,7 @@ def connect_to_gsheet():
     except Exception:
         return None
 
+
 sh = connect_to_gsheet()
 
 # Session state 初始化
@@ -78,6 +82,7 @@ if "designs" not in st.session_state:
     st.session_state["designs"] = {}
 if "uploader_keys" not in st.session_state:
     st.session_state["uploader_keys"] = {}
+
 
 # ==========================================
 # 1. 影像處理引擎
@@ -94,6 +99,7 @@ def process_user_image(uploaded_file_bytes, apply_rb):
     if apply_rb:
         img = remove(img)
     return img
+
 
 # ==========================================
 # 2. 價格計算 + 品牌方案分級
@@ -112,6 +118,7 @@ def calculate_unit_price(qty, is_double_sided):
         price_s, price_d = 320, 470
     return price_d if is_double_sided else price_s
 
+
 def calculate_cp101_price(size_counts: dict):
     """
     CP101 價格（依你提供的圖）：
@@ -119,14 +126,14 @@ def calculate_cp101_price(size_counts: dict):
     - 30–100：XS–2XL=245 / 3XL–5XL=255
     - 100以上：XS–2XL=240 / 3XL–5XL=250
 
-    系統最低訂量仍用 20（你的 UI 也寫 20）
+    系統最低訂量：20
     """
     total_qty = sum(size_counts.values())
     if total_qty < 20:
         return 0, 0
 
     small_sizes = ["XS", "S", "M", "L", "XL", "2XL"]
-    big_sizes = ["3XL", "4XL", "5XL"]  # UI 有 4XL，價格比照大尺碼
+    big_sizes = ["3XL", "4XL", "5XL"]  # 4XL 視同大尺碼
 
     small_qty = sum(size_counts.get(s, 0) for s in small_sizes)
     big_qty = sum(size_counts.get(s, 0) for s in big_sizes)
@@ -142,6 +149,7 @@ def calculate_cp101_price(size_counts: dict):
     avg_unit_price = round(total_price / total_qty) if total_qty > 0 else 0
     return avg_unit_price, total_price
 
+
 def classify_plan(qty, is_double_sided):
     if qty < 20:
         return None, None
@@ -156,6 +164,7 @@ def classify_plan(qty, is_double_sided):
         name = "團體款 Team Edition"
         desc = "適合班服、社團、活動紀念服，以高 CP 值完成一次性專案。"
     return name, desc
+
 
 # ==========================================
 # 3. 詢價單生成（圖片）
@@ -182,6 +191,7 @@ def get_fonts():
             ImageFont.load_default(),
         )
 
+
 def load_logo():
     candidates = ["LOGO.png", "logo.png", "logo.jpg", "logo.jpeg"]
     for fn in candidates:
@@ -192,6 +202,7 @@ def load_logo():
             except Exception:
                 continue
     return None
+
 
 def generate_inquiry_image(img_front, img_back, data, design_list_text, unit_price):
     w, h = 1400, 1200
@@ -211,7 +222,6 @@ def generate_inquiry_image(img_front, img_back, data, design_list_text, unit_pri
     card_y = header_h + 10
     img_box = (80, card_y, w - 80, card_y + 380)
     draw.rounded_rectangle(img_box, radius=26, fill="#FFFFFF")
-
     draw.text((w // 2 - 70, card_y + 16), "DESIGN PREVIEW", fill="#A1A7AD", font=font_M)
 
     fw = 520
@@ -291,6 +301,7 @@ def generate_inquiry_image(img_front, img_back, data, design_list_text, unit_pri
 
     return card
 
+
 # ==========================================
 # 4. 寫入訂單資料
 # ==========================================
@@ -317,6 +328,7 @@ def add_order_to_db(data):
             return False
     return False
 
+
 # ==========================================
 # 5. UI 佈局與品牌化呈現
 # ==========================================
@@ -330,6 +342,52 @@ st.markdown(
 """,
     unsafe_allow_html=True,
 )
+
+
+# -------------------------
+# 找圖工具（大小寫容錯 + debug）
+# -------------------------
+def resolve_asset_paths(base_name: str, color_code: str):
+    """
+    回傳：(front_path, back_path, tried_list)
+    - 會嘗試 base / code 的大小寫變形
+    - 若找不到完整一組，至少回傳能找到的 front/back（避免整片灰）
+    """
+    tried = []
+
+    base_candidates = [base_name, base_name.lower(), base_name.upper()] if base_name else []
+    code_candidates = [color_code, color_code.lower(), color_code.upper()] if color_code else []
+
+    seen = set()
+    for b in base_candidates:
+        for c in code_candidates:
+            key = (b, c)
+            if key in seen:
+                continue
+            seen.add(key)
+
+            f_try = f"{b}_{c}_front"
+            b_try = f"{b}_{c}_back"
+            for ext in [".png", ".jpg", ".jpeg"]:
+                fp = ASSETS_DIR / (f_try + ext)
+                bp = ASSETS_DIR / (b_try + ext)
+                tried.append(fp.name)
+                tried.append(bp.name)
+                if fp.exists() and bp.exists():
+                    return str(fp), str(bp), tried
+
+    # 找不到完整一組就找可用的
+    best_front = ""
+    best_back = ""
+    for name in tried:
+        p = ASSETS_DIR / name
+        if p.exists() and "_front" in name and not best_front:
+            best_front = str(p)
+        if p.exists() and "_back" in name and not best_back:
+            best_back = str(p)
+
+    return best_front, best_back, tried
+
 
 with st.sidebar:
     owner_path = ASSETS_DIR / "owner.jpg"
@@ -345,72 +403,31 @@ with st.sidebar:
     if not font_path:
         st.error("⚠ 找不到 NotoSansTC-Regular.ttf，詢價單中文字可能顯示異常。")
 
-    ("🛠 系統診斷 (System Debug)"):
+    # ✅ 修正：System Debug 必須用 with st.expander
+    with st.expander("🛠 系統診斷 (System Debug)", expanded=False):
         st.write(f"字型路徑: `{font_path}`")
         if ASSETS_DIR.exists():
             st.write("📁 assets 檔案：")
             st.code("\n".join(sorted(os.listdir(str(ASSETS_DIR)))))
+        else:
+            st.error("找不到 assets 資料夾（請確認專案根目錄下有 assets/）")
+
         if st.button("手動重新整理網頁"):
             st.rerun()
+
 
 st.markdown(
     """
 # 👕 興彰企業 x 默默文創｜品牌級旗艦版
-  
 > 從班服、社團服，到企業制服、聯名企劃，都用同一套高標準，穩定輸出你的品牌感。
-
 ---
 """
 )
 st.caption("🚀 興彰企業 x 默默文創｜工廠直營．品牌級品質．透明估價")
 
+
 c1, c2 = st.columns([1.5, 1])
 
-# -------------------------
-# 找圖工具（大小寫容錯 + debug）
-# -------------------------
-def resolve_asset_paths(base_name: str, color_code: str):
-    """
-    回傳：(front_path, back_path, tried_list)
-    會自動嘗試 base / code 的大小寫變形，避免你 assets 全小寫時找不到。
-    """
-    tried = []
-    base_candidates = []
-    code_candidates = []
-
-    if base_name:
-        base_candidates = [base_name, base_name.lower(), base_name.upper()]
-    if color_code:
-        code_candidates = [color_code, color_code.lower(), color_code.upper()]
-
-    seen = set()
-    for b in base_candidates:
-        for c in code_candidates:
-            key = (b, c)
-            if key in seen:
-                continue
-            seen.add(key)
-
-            f_try = f"{b}_{c}_front"
-            b_try = f"{b}_{c}_back"
-            for ext in [".png", ".jpg", ".jpeg"]:
-                fp = ASSETS_DIR / (f_try + ext)
-                bp = ASSETS_DIR / (b_try + ext)
-                tried.append(str(fp.name))
-                tried.append(str(bp.name))
-                if fp.exists() and bp.exists():
-                    return str(fp), str(bp), tried
-
-    # 如果找不到完整一組，至少找得到 front/back 其中一張也回傳（避免整片灰）
-    best_front = ""
-    best_back = ""
-    for name in tried:
-        p = ASSETS_DIR / name
-        if p.exists() and "_front" in name and not best_front:
-            best_front = str(p)
-        if p.exists() and "_back" in name and not best_back:
-            best_back = str(p)
-    return best_front, best_back, tried
 
 # =========================
 # 右側：產品、尺寸、上傳
@@ -418,11 +435,17 @@ def resolve_asset_paths(base_name: str, color_code: str):
 with c2:
     st.markdown("### 1️⃣ 選擇產品 & 數量")
 
+    if not PRODUCT_CATALOG:
+        st.error("⚠️ products.py 讀取失敗（PRODUCT_CATALOG 為空）。")
+        st.stop()
+
     series_list = list(PRODUCT_CATALOG.keys())
     s = st.selectbox("系列", series_list)
-    v = st.selectbox("款式", list(PRODUCT_CATALOG[s].keys()))
-    item = PRODUCT_CATALOG.get(s, {}).get(v, {})
 
+    style_list = list(PRODUCT_CATALOG[s].keys())
+    v = st.selectbox("款式", style_list)
+
+    item = PRODUCT_CATALOG.get(s, {}).get(v, {})
     st.caption(f"🚀 {s}｜{v}｜興彰企業 x 默默文創")
 
     color_options = item.get("colors", ["預設"])
@@ -433,18 +456,30 @@ with c2:
 
     img_url_front, img_url_back, tried_files = resolve_asset_paths(base_name, color_code)
 
-    # 如果還是找不到，就在右側直接提示你「它到底在找什麼」
+    # 找不到就顯示 debug（不讓你盲修）
     if not img_url_front or not img_url_back:
-        ("🧯 找不到衣服底圖？點我看原因（Debug）", expanded=False):
+        with st.expander("🧯 找不到衣服底圖？點我看原因（Debug）", expanded=False):
             st.write("系統目前組合的參數：")
-            st.code({"image_base": base_name, "color_code": color_code, "selected_color": selected_color_name})
+            st.code(
+                {
+                    "image_base": base_name,
+                    "color_code": color_code,
+                    "selected_color": selected_color_name,
+                }
+            )
             st.write("系統曾嘗試找這些檔名（只要其中一組存在就會成功）：")
-            st.code("\n".join(tried_files[:50]) + ("\n...(略)" if len(tried_files) > 50 else ""))
-            st.warning("✅ 你的 assets 檔名若全小寫，請確保 products.py 的 image_base / color_map 也全小寫。")
+            st.code(
+                "\n".join(tried_files[:60]) + ("\n...(略)" if len(tried_files) > 60 else "")
+            )
+            st.warning(
+                "✅ 你的 assets 檔名若全小寫（例如 cp101_white_front.png），"
+                "建議 products.py 的 image_base / color_map 也全小寫。"
+            )
 
     st.markdown("---")
+
+    # ✅ CP101 尺寸表：固定 assets/cp101_size_chart.png
     with st.expander("📏 查看尺寸表 (Size Chart)"):
-        # CP101 專屬尺寸表：assets/cp101_size_chart.png
         if "CP101" in v:
             sz_path = ASSETS_DIR / "cp101_size_chart.png"
             if sz_path.exists():
@@ -452,7 +487,6 @@ with c2:
             else:
                 st.warning("找不到 cp101_size_chart.png，請上傳到 assets 資料夾。")
         else:
-            # 其他產品沿用通用尺寸表
             sz_path = ASSETS_DIR / "size_chart.png"
             if not sz_path.exists():
                 sz_path = ASSETS_DIR / "size_chart.jpg"
@@ -461,12 +495,11 @@ with c2:
             else:
                 st.warning("請上傳 size_chart.png 或 size_chart.jpg 到 assets 資料夾。")
 
-
+    # 尺寸輸入（補齊 XS）
     size_inputs = {}
     st.markdown("### 尺寸件數設定")
     st.caption("請依實際需求輸入各尺寸件數（**最低總數 20 件**）：")
 
-    # ✅ CP101 你畫面有 XS，原本少了 XS 這格 → 我補進來
     rows = [("XS", "S"), ("M", "L"), ("XL", "2XL"), ("3XL", "4XL"), ("5XL", "")]
 
     for left_size, right_size in rows:
@@ -476,6 +509,7 @@ with c2:
                 if not size:
                     st.empty()
                     continue
+
                 st.markdown(
                     f"""
 <div style="
@@ -491,6 +525,7 @@ with c2:
 """,
                     unsafe_allow_html=True,
                 )
+
                 size_inputs[size] = st.number_input(
                     label="",
                     min_value=0,
@@ -501,12 +536,13 @@ with c2:
 
     total_qty = sum(size_inputs.values())
 
+    # 2 上傳設計
     st.markdown("### 2️⃣ 創意設計 & 上傳")
-
     tab_f, tab_b = st.tabs(["👕 正面設計", "🔄 背面設計"])
 
     def render_upload_ui(pos_dict, side_prefix: str):
         if not pos_dict:
+            st.info("此款式尚未設定印刷位置（pos_front/pos_back）。")
             return
 
         pk = st.selectbox(
@@ -555,6 +591,7 @@ with c2:
     has_b = any(k.startswith("back_") for k in st.session_state["designs"].keys())
     is_ds = has_f and has_b
 
+    # CP101 用專屬價，其餘用一般價
     if "CP101" in v:
         unit_price, total_price = calculate_cp101_price(size_inputs)
     else:
@@ -562,6 +599,7 @@ with c2:
         total_price = unit_price * total_qty
 
     plan_name, plan_desc = classify_plan(total_qty, is_ds)
+
 
 # =========================
 # 左側：即時預覽
@@ -604,6 +642,7 @@ with c1:
             p_img = p_img.resize((d_val["sz"], int(p_img.height * wr)))
             if d_val["rot"] != 0:
                 p_img = p_img.rotate(d_val["rot"], expand=True)
+
             final.paste(
                 p_img,
                 (int(tx - p_img.width / 2 + d_val["ox"]), int(ty - p_img.height / 2 + d_val["oy"])),
@@ -629,6 +668,7 @@ with c1:
                     if st.form_submit_button("✅ 確認套用"):
                         d_val.update({"rb": new_rb, "sz": new_sz, "rot": new_rot, "ox": new_ox, "oy": new_oy})
                         st.rerun()
+
 
 # =========================
 # 報價區
@@ -724,6 +764,7 @@ else:
                         pimg = pimg.resize((dv["sz"], int(pimg.height * wr)))
                         if dv["rot"] != 0:
                             pimg = pimg.rotate(dv["rot"], expand=True)
+
                         final_b.paste(
                             pimg,
                             (int(tx - pimg.width / 2 + dv["ox"]), int(ty - pimg.height / 2 + dv["oy"])),
@@ -740,5 +781,3 @@ else:
                 st.success("✅ 品牌級正式詢價單已生成！")
                 st.image(receipt, caption="📩 請長按儲存此圖片，並傳給阿默 LINE: @727jxovv")
                 st.link_button("👉 立即開啟 LINE 傳送圖檔給阿默", "https://line.me/ti/p/~@727jxovv")
-
-
