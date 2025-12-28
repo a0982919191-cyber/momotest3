@@ -142,21 +142,22 @@ PRODUCT_CATALOG = {
             },
 
             "pos_front": {
-                "正中間 (Center)": {"coords": (570, 400)},
-                "左胸 (Left Chest)": {"coords": (800, 400)},
-                "右胸 (Right Chest)": {"coords": (340, 400)},
-                "左臂 (Left Sleeve)": {"coords": (1020, 350), "default_rot": 55},
-                "右臂 (Right Sleeve)": {"coords": (120, 350), "default_rot": -45},
+                "正中間 (Center)": {"coords": (590, 400)},
+                "左胸 (Left Chest)": {"coords": (700, 400)},
+                "右胸 (Right Chest)": {"coords": (480, 400)},
+                "左臂 (Left Sleeve)": {"coords": (1120, 200), "default_rot": 55},
+                "右臂 (Right Sleeve)": {"coords": (120, 200), "default_rot": -40},
             },
 
             "pos_back": {
-                "背中置中 (Center)": {"coords": (570, 400)},
+                "背中置中 (Center)": {"coords": (530, 350)},
                 "左臂-後 (L.Sleeve Back)": {"coords": (1020, 350)},
                 "右臂-後 (R.Sleeve Back)": {"coords": (120, 350)},
             },
         },
     }
 }
+
 
 
 
