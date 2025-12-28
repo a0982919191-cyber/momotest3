@@ -345,7 +345,7 @@ with st.sidebar:
     if not font_path:
         st.error("⚠ 找不到 NotoSansTC-Regular.ttf，詢價單中文字可能顯示異常。")
 
-    with st.expander("🛠 系統診斷 (System Debug)"):
+    ("🛠 系統診斷 (System Debug)"):
         st.write(f"字型路徑: `{font_path}`")
         if ASSETS_DIR.exists():
             st.write("📁 assets 檔案：")
@@ -435,7 +435,7 @@ with c2:
 
     # 如果還是找不到，就在右側直接提示你「它到底在找什麼」
     if not img_url_front or not img_url_back:
-        with st.expander("🧯 找不到衣服底圖？點我看原因（Debug）", expanded=False):
+        ("🧯 找不到衣服底圖？點我看原因（Debug）", expanded=False):
             st.write("系統目前組合的參數：")
             st.code({"image_base": base_name, "color_code": color_code, "selected_color": selected_color_name})
             st.write("系統曾嘗試找這些檔名（只要其中一組存在就會成功）：")
@@ -740,4 +740,5 @@ else:
                 st.success("✅ 品牌級正式詢價單已生成！")
                 st.image(receipt, caption="📩 請長按儲存此圖片，並傳給阿默 LINE: @727jxovv")
                 st.link_button("👉 立即開啟 LINE 傳送圖檔給阿默", "https://line.me/ti/p/~@727jxovv")
+
 
