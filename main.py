@@ -444,13 +444,23 @@ with c2:
 
     st.markdown("---")
     with st.expander("📏 查看尺寸表 (Size Chart)"):
-        sz_path = ASSETS_DIR / "size_chart.png"
-        if not sz_path.exists():
-            sz_path = ASSETS_DIR / "size_chart.jpg"
-        if sz_path.exists():
-            st.image(str(sz_path))
+        # CP101 專屬尺寸表：assets/cp101_size_chart.png
+        if "CP101" in v:
+            sz_path = ASSETS_DIR / "cp101_size_chart.png"
+            if sz_path.exists():
+                st.image(str(sz_path))
+            else:
+                st.warning("找不到 cp101_size_chart.png，請上傳到 assets 資料夾。")
         else:
-            st.warning("請上傳 size_chart.png 或 size_chart.jpg 到 assets 資料夾。")
+            # 其他產品沿用通用尺寸表
+            sz_path = ASSETS_DIR / "size_chart.png"
+            if not sz_path.exists():
+                sz_path = ASSETS_DIR / "size_chart.jpg"
+            if sz_path.exists():
+                st.image(str(sz_path))
+            else:
+                st.warning("請上傳 size_chart.png 或 size_chart.jpg 到 assets 資料夾。")
+
 
     size_inputs = {}
     st.markdown("### 尺寸件數設定")
@@ -730,3 +740,4 @@ else:
                 st.success("✅ 品牌級正式詢價單已生成！")
                 st.image(receipt, caption="📩 請長按儲存此圖片，並傳給阿默 LINE: @727jxovv")
                 st.link_button("👉 立即開啟 LINE 傳送圖檔給阿默", "https://line.me/ti/p/~@727jxovv")
+
