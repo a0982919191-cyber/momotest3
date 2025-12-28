@@ -1,12 +1,12 @@
 # products.py
-# 產品資料庫：新增/修改產品，改這裡即可
+# 產品資料庫：新增 / 調整產品請改這裡
 
 PRODUCT_CATALOG = {
     "團體服系列": {
         "AG21000 重磅棉T": {
             "name": "AG21000 重磅棉T",
 
-            # 顏色選項（顯示名稱）
+            # 1) 顏色選項（顯示在選單）
             "colors": [
                 "白 (White)",
                 "黑 (Black)",
@@ -27,10 +27,11 @@ PRODUCT_CATALOG = {
                 "蜜桃橘 (PeachOrange)",
                 "淺粉 (LightPink)",
                 "卡其 (Khaki)",
-                "米褐 (BeigeBrown)",
+                "米褐 (BeigeBrown)"
             ],
 
-            # 顏色對應（檔名代碼需與 assets 完全一致）
+            # 2) 顏色對應（需符合 assets 檔名大小寫）
+            # AG21000 你目前看起來是用 CamelCase 檔名，這裡維持原設定
             "color_map": {
                 "白 (White)": "White",
                 "黑 (Black)": "Black",
@@ -51,11 +52,13 @@ PRODUCT_CATALOG = {
                 "蜜桃橘 (PeachOrange)": "PeachOrange",
                 "淺粉 (LightPink)": "LightPink",
                 "卡其 (Khaki)": "Khaki",
-                "米褐 (BeigeBrown)": "BeigeBrown",
+                "米褐 (BeigeBrown)": "BeigeBrown"
             },
 
+            # 3) 檔名開頭（AG21000_*_front.png）
             "image_base": "AG21000",
 
+            # 4) 正面印刷位置
             "pos_front": {
                 "正中間 (Center)": {"coords": (380, 270)},
                 "左胸 (Left Chest)": {"coords": (450, 230)},
@@ -64,36 +67,32 @@ PRODUCT_CATALOG = {
                 "右臂 (Right Sleeve)": {"coords": (50, 180), "default_rot": -45},
             },
 
+            # 5) 背面印刷位置
             "pos_back": {
                 "背後正中 (Center)": {"coords": (500, 320)},
                 "左臂-後 (L.Sleeve Back)": {"coords": (950, 240)},
                 "右臂-後 (R.Sleeve Back)": {"coords": (80, 270)},
-            },
-
-            # 尺寸（若不填，main.py 會用預設 S~5XL）
-            "sizes": ["S", "M", "L", "XL", "2XL", "3XL", "4XL", "5XL"],
+            }
         },
 
-        # ✅ CP101：依你 assets 檔名全小寫規則設計
-        # 檔名格式：cp101_<code>_front.png / cp101_<code>_back.png
+        # ✅ CP101：強制全小寫，對齊你 assets 的 cp101_xxx_front/back.png
         "CP101 吸濕排汗團體服": {
             "name": "CP101 吸濕排汗團體服",
             "image_base": "cp101",
 
             "colors": [
-                "白色", "淺灰色", "深灰色", "黑色", "粉紅色",
-                "玫紅色", "紅色", "酒紅色", "水藍色", "湖藍色",
-                "寶藍色", "藏青色", "海藍色", "草綠色", "墨綠色",
-                "卡其色", "淺黃色", "黃色", "淺紫色", "深紫色",
-                "螢光粉色", "螢光橘色", "螢光綠色", "螢光黃色",
-
-                "奶茶色", "蓮藕粉色", "玫瑰粉色", "瑪瑙紅色",
-                "芥末黃色", "金色", "南瓜橘色", "珊瑚橘色",
-                "天空藍色", "薰衣草色", "星空灰色", "鯨魚藍色",
-                "翡翠綠色", "軍綠色", "駝色", "太妃糖色",
+                "白色","淺灰色","深灰色","黑色","粉紅色",
+                "玫紅色","紅色","酒紅色","水藍色","湖藍色",
+                "寶藍色","藏青色","海藍色","草綠色","墨綠色",
+                "卡其色","淺黃色","黃色","淺紫色","深紫色",
+                "螢光粉色","螢光橘色","螢光綠色","螢光黃色",
+                "奶茶色","蓮藕粉色","玫瑰粉色","瑪瑙紅色",
+                "芥末黃色","金色","南瓜橘色","珊瑚橘色",
+                "天空藍色","薰衣草色","星空灰色","鯨魚藍色",
+                "翡翠綠色","軍綠色","駝色","太妃糖色"
             ],
 
-            # ✅ 注意：全部小寫，對應你現有檔名
+            # ✅ 全小寫：必須與 assets 檔名一致
             "color_map": {
                 "白色": "white",
                 "淺灰色": "lightgray",
@@ -143,18 +142,15 @@ PRODUCT_CATALOG = {
             },
 
             "pos_front": {
-                "胸口置中": {"coords": (300, 360)},
-                "左胸小字": {"coords": (220, 340)},
-                "右胸小字": {"coords": (380, 340)},
+                "正中間 (Center)": {"coords": (300, 360)},
+                "左胸 (Left Chest)": {"coords": (220, 340)},
+                "右胸 (Right Chest)": {"coords": (380, 340)},
             },
 
             "pos_back": {
-                "背中置中": {"coords": (300, 360)},
-                "上背字樣": {"coords": (300, 280)},
+                "背中置中 (Center)": {"coords": (300, 360)},
+                "上背字樣 (Upper Back)": {"coords": (300, 280)},
             },
-
-            # ✅ CP101 有 XS
-            "sizes": ["XS", "S", "M", "L", "XL", "2XL", "3XL", "4XL", "5XL"],
         },
     }
 }
