@@ -151,12 +151,13 @@ PRODUCT_CATALOG = {
 
             "pos_back": {
                 "背中置中 (Center)": {"coords": (520, 350)},
-                "左臂-後 (L.Sleeve Back)": {"coords": (930, 150)},
-                "右臂-後 (R.Sleeve Back)": {"coords": (90, 250)},
+                "左臂-後 (L.Sleeve Back)": {"coords": (980, 200)},
+                "右臂-後 (R.Sleeve Back)": {"coords": (90, 200)},
             },
         },
     }
 }
+
 
 
 
