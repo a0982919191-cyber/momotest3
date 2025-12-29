@@ -65,7 +65,7 @@ PRODUCT_CATALOG = {
 
             # 4) 正面印刷位置（coords = (x, y)）
             "pos_front": {
-                "正中間 (Center)": {"coords": (380, 270)},
+                "正中間 (Center)": {"coords": (0.50, 0.45), "is_ratio": True}
                 "左胸 (Left Chest)": {"coords": (450, 230)},
                 "右胸 (Right Chest)": {"coords": (300, 230)},
                 "左臂 (Left Sleeve)": {"coords": (720, 150), "default_rot": 55},
@@ -162,3 +162,4 @@ PRODUCT_CATALOG = {
         },
     }
 }
+
