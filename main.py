@@ -529,31 +529,7 @@ def resolve_asset_paths(base_name: str, color_code: str):
                 tried.append(bp.name)
                 if fp.exists() and bp.exists():
                     return str(fp), str(bp), tried
-def resolve_coords(coords, base_img):
-    """
-    coords 可以是：
-    - 像素座標：(300, 360)
-    - 比例座標：(0.5, 0.45)
 
-    會自動轉成實際像素座標
-    """
-    x, y = coords
-    if isinstance(x, float) or isinstance(y, float):
-        return int(x * base_img.width), int(y * base_img.height)
-    return int(x), int(y)
-
-
-    # 找不到完整一組就盡量找單張
-    best_front = ""
-    best_back = ""
-    for name in tried:
-        p = ASSETS_DIR / name
-        if p.exists() and ("_front" in name) and not best_front:
-            best_front = str(p)
-        if p.exists() and ("_back" in name) and not best_back:
-            best_back = str(p)
-
-    return best_front, best_back, tried
 
 # ==========================================
 # 9) UI：全局樣式
@@ -1153,4 +1129,5 @@ if nav == "管理後台":
         admin_dashboard()
 else:
     app_front()
+
 
