@@ -1,86 +1,20 @@
-# products.py
-# 產品資料庫：新增 / 調整產品請改這裡
-# 命名規範（衣服底圖 assets/）：
-#   {image_base}_{color_code}_front.png
-#   {image_base}_{color_code}_back.png
-# 例：AG21000_White_front.png、AG21000_White_back.png
-# 例：cp101_white_front.png、cp101_white_back.png
+# -*- coding: utf-8 -*-
+# products.py － 產品資料庫（比例座標版）
+#
+# 規格：
+# - image_base / color_map 建議全小寫，對齊 assets 檔名（例如：cp101_white_front.png）
+# - coords 使用「比例座標」：(x_ratio, y_ratio)
+#   x_ratio = 0~1（相對於底圖寬度），y_ratio = 0~1（相對於底圖高度）
+#
+# 例：
+#   (0.5, 0.45) = 圖的寬 50% 位置、圖的高 45% 位置
 
 PRODUCT_CATALOG = {
     "團體服系列": {
-        "AG21000 重磅棉T": {
-            "name": "AG21000 重磅棉T",
 
-            # 1) 顏色選項（顯示在選單）
-            "colors": [
-                "白 (White)",
-                "黑 (Black)",
-                "丈青 (Navy)",
-                "麻灰 (HeatherGray)",
-                "炭灰 (CharcoalGray)",
-                "石板灰 (SlateGray)",
-                "紅 (Red)",
-                "酒紅 (Burgundy)",
-                "寶藍 (RoyalBlue)",
-                "霧霾藍 (DustyBlue)",
-                "蒂芬妮藍 (TiffanyBlue)",
-                "森林綠 (ForestGreen)",
-                "抹茶綠 (MatchaGreen)",
-                "薄荷綠 (MintGreen)",
-                "黃 (Yellow)",
-                "琥珀黃 (AmberYellow)",
-                "蜜桃橘 (PeachOrange)",
-                "淺粉 (LightPink)",
-                "卡其 (Khaki)",
-                "米褐 (BeigeBrown)"
-            ],
-
-            # 2) 顏色對應（需符合 assets 檔名大小寫）
-            # AG21000 這裡使用 CamelCase，請確保 assets 檔名也同樣 CamelCase
-            "color_map": {
-                "白 (White)": "White",
-                "黑 (Black)": "Black",
-                "丈青 (Navy)": "Navy",
-                "麻灰 (HeatherGray)": "HeatherGray",
-                "炭灰 (CharcoalGray)": "CharcoalGray",
-                "石板灰 (SlateGray)": "SlateGray",
-                "紅 (Red)": "Red",
-                "酒紅 (Burgundy)": "Burgundy",
-                "寶藍 (RoyalBlue)": "RoyalBlue",
-                "霧霾藍 (DustyBlue)": "DustyBlue",
-                "蒂芬妮藍 (TiffanyBlue)": "TiffanyBlue",
-                "森林綠 (ForestGreen)": "ForestGreen",
-                "抹茶綠 (MatchaGreen)": "MatchaGreen",
-                "薄荷綠 (MintGreen)": "MintGreen",
-                "黃 (Yellow)": "Yellow",
-                "琥珀黃 (AmberYellow)": "AmberYellow",
-                "蜜桃橘 (PeachOrange)": "PeachOrange",
-                "淺粉 (LightPink)": "LightPink",
-                "卡其 (Khaki)": "Khaki",
-                "米褐 (BeigeBrown)": "BeigeBrown"
-            },
-
-            # 3) 檔名開頭（AG21000_*_front.png）
-            "image_base": "AG21000",
-
-            # 4) 正面印刷位置（coords = (x, y)）
-            "pos_front": {
-                "正中間 (Center)": {"coords": (0.50, 0.45), "is_ratio": True}
-                "左胸 (Left Chest)": {"coords": (450, 230)},
-                "右胸 (Right Chest)": {"coords": (300, 230)},
-                "左臂 (Left Sleeve)": {"coords": (720, 150), "default_rot": 55},
-                "右臂 (Right Sleeve)": {"coords": (50, 180), "default_rot": -45},
-            },
-
-            # 5) 背面印刷位置
-            "pos_back": {
-                "背後正中 (Center)": {"coords": (500, 320)},
-                "左臂-後 (L.Sleeve Back)": {"coords": (950, 240)},
-                "右臂-後 (R.Sleeve Back)": {"coords": (80, 270)},
-            }
-        },
-
-        # ✅ CP101：強制全小寫，對齊 assets 的 cp101_xxx_front/back.png
+        # =========================================================
+        # CP101 吸濕排汗團體服（比例座標）
+        # =========================================================
         "CP101 吸濕排汗團體服": {
             "name": "CP101 吸濕排汗團體服",
             "image_base": "cp101",
@@ -97,7 +31,7 @@ PRODUCT_CATALOG = {
                 "翡翠綠色","軍綠色","駝色","太妃糖色"
             ],
 
-            # ✅ 全小寫：必須與 assets 檔名一致
+            # 檔名對應（全小寫）：cp101_<code>_front.png / cp101_<code>_back.png
             "color_map": {
                 "白色": "white",
                 "淺灰色": "lightgray",
@@ -114,18 +48,15 @@ PRODUCT_CATALOG = {
                 "海藍色": "seablue",
                 "草綠色": "grassgreen",
                 "墨綠色": "darkgreen",
-
                 "卡其色": "khaki",
                 "淺黃色": "lightyellow",
                 "黃色": "yellow",
                 "淺紫色": "lavender",
                 "深紫色": "purple",
-
                 "螢光粉色": "neonpink",
                 "螢光橘色": "neonorange",
                 "螢光綠色": "neongreen",
                 "螢光黃色": "neonyellow",
-
                 "奶茶色": "milktea",
                 "蓮藕粉色": "lotuspink",
                 "玫瑰粉色": "rosepink",
@@ -134,32 +65,69 @@ PRODUCT_CATALOG = {
                 "金色": "gold",
                 "南瓜橘色": "pumpkin",
                 "珊瑚橘色": "coral",
-
                 "天空藍色": "sky",
                 "薰衣草色": "lavenderblue",
                 "星空灰色": "spacegray",
                 "鯨魚藍色": "whaleblue",
-
                 "翡翠綠色": "emerald",
                 "軍綠色": "army",
                 "駝色": "camel",
                 "太妃糖色": "toffee",
             },
 
+            # ✅ 比例座標（不跑偏）
+            # 你原本像素中心大約在 (300,360)（以 600x800 推回比例）
             "pos_front": {
-                "正中間 (Center)": {"coords": (590, 400)},
-                "左胸 (Left Chest)": {"coords": (740, 400)},
-                "右胸 (Right Chest)": {"coords": (440, 400)},
-                "左臂 (Left Sleeve)": {"coords": (1080, 250), "default_rot": 55},
-                "右臂 (Right Sleeve)": {"coords": (100, 250), "default_rot": -50},
+                "正中間 (Center)": {"coords": (0.50, 0.45)},
+                "左胸 (Left Chest)": {"coords": (0.37, 0.425)},
+                "右胸 (Right Chest)": {"coords": (0.63, 0.425)},
+            },
+            "pos_back": {
+                "背中置中 (Center)": {"coords": (0.50, 0.45)},
+                "上背字樣 (Upper Back)": {"coords": (0.50, 0.35)},
+            },
+        },
+
+        # =========================================================
+        # AG21000 重磅棉T（比例座標）
+        # =========================================================
+        "AG21000 重磅棉T": {
+            "name": "AG21000 重磅棉T",
+            "image_base": "ag21000",
+
+            # 你可依現有庫存再擴充；這裡先放常用色
+            "colors": [
+                "白色", "黑色", "麻灰", "炭灰 (CharcoalGray)", "深藍 (Navy)",
+                "奶茶 (BeigeBrown)"
+            ],
+
+            # 檔名對應（建議全小寫）：ag21000_<code>_front.png / ag21000_<code>_back.png
+            # main.py 有大小寫容錯，所以就算你 assets 不是全小寫也仍可找到
+            "color_map": {
+                "白色": "white",
+                "黑色": "black",
+                "麻灰": "heathergrey",
+                "炭灰 (CharcoalGray)": "charcoalgray",
+                "深藍 (Navy)": "navy",
+                "奶茶 (BeigeBrown)": "beigebrown",
             },
 
+            # ✅ 比例座標（通用穩定點位）
+            # 若你想更精準貼合某款版型，可再微調比例值（但不會再因底圖尺寸而跑掉）
+            "pos_front": {
+                "正中間 (Center)": {"coords": (0.50, 0.52)},
+                "左胸 (Left Chest)": {"coords": (0.38, 0.40)},
+                "右胸 (Right Chest)": {"coords": (0.62, 0.40)},
+                "左臂 (Left Sleeve)": {"coords": (0.18, 0.36)},
+                "右臂 (Right Sleeve)": {"coords": (0.82, 0.36)},
+            },
             "pos_back": {
-                "背中置中 (Center)": {"coords": (520, 350)},
-                "左臂-後 (L.Sleeve Back)": {"coords": (980, 200)},
-                "右臂-後 (R.Sleeve Back)": {"coords": (90, 200)},
+                "背中置中 (Center)": {"coords": (0.50, 0.52)},
+                "上背字樣 (Upper Back)": {"coords": (0.50, 0.33)},
+                # ✅ 給 main.py 的 SLEEVE_MAPPING 用（正面袖口要投到背面袖口時會找這兩個 key）
+                "左臂-後 (L.Sleeve Back)": {"coords": (0.18, 0.36)},
+                "右臂-後 (R.Sleeve Back)": {"coords": (0.82, 0.36)},
             },
         },
     }
 }
-
