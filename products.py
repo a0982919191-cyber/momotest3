@@ -1,5 +1,10 @@
 # products.py
 # 產品資料庫：新增 / 調整產品請改這裡
+# 命名規範（衣服底圖 assets/）：
+#   {image_base}_{color_code}_front.png
+#   {image_base}_{color_code}_back.png
+# 例：AG21000_White_front.png、AG21000_White_back.png
+# 例：cp101_white_front.png、cp101_white_back.png
 
 PRODUCT_CATALOG = {
     "團體服系列": {
@@ -31,7 +36,7 @@ PRODUCT_CATALOG = {
             ],
 
             # 2) 顏色對應（需符合 assets 檔名大小寫）
-            # AG21000 你目前看起來是用 CamelCase 檔名，這裡維持原設定
+            # AG21000 這裡使用 CamelCase，請確保 assets 檔名也同樣 CamelCase
             "color_map": {
                 "白 (White)": "White",
                 "黑 (Black)": "Black",
@@ -58,7 +63,7 @@ PRODUCT_CATALOG = {
             # 3) 檔名開頭（AG21000_*_front.png）
             "image_base": "AG21000",
 
-            # 4) 正面印刷位置
+            # 4) 正面印刷位置（coords = (x, y)）
             "pos_front": {
                 "正中間 (Center)": {"coords": (380, 270)},
                 "左胸 (Left Chest)": {"coords": (450, 230)},
@@ -75,7 +80,7 @@ PRODUCT_CATALOG = {
             }
         },
 
-        # ✅ CP101：強制全小寫，對齊你 assets 的 cp101_xxx_front/back.png
+        # ✅ CP101：強制全小寫，對齊 assets 的 cp101_xxx_front/back.png
         "CP101 吸濕排汗團體服": {
             "name": "CP101 吸濕排汗團體服",
             "image_base": "cp101",
@@ -157,13 +162,3 @@ PRODUCT_CATALOG = {
         },
     }
 }
-
-
-
-
-
-
-
-
-
-
