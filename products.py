@@ -1,19 +1,13 @@
 # -*- coding: utf-8 -*-
-# products.py － 產品資料庫（比例座標版）
-#
-# 規格：
-# - image_base / color_map 建議全小寫，對齊 assets 檔名（例如：cp101_white_front.png）
-# - coords 使用「比例座標」：(x_ratio, y_ratio)
-#   x_ratio = 0~1（相對於底圖寬度），y_ratio = 0~1（相對於底圖高度）
-#
-# 例：
-#   (0.5, 0.45) = 圖的寬 50% 位置、圖的高 45% 位置
+# products.py － 產品資料庫（比例座標版，已修正左右胸/袖口/背面需求）
 
 PRODUCT_CATALOG = {
     "團體服系列": {
 
         # =========================================================
         # CP101 吸濕排汗團體服（比例座標）
+        # - 修正：左胸/右胸以「穿者視角」定義（畫面左右會相反）
+        # - 檔名：cp101_<code>_front.png / cp101_<code>_back.png（你目前 assets 是全小寫）
         # =========================================================
         "CP101 吸濕排汗團體服": {
             "name": "CP101 吸濕排汗團體服",
@@ -31,7 +25,7 @@ PRODUCT_CATALOG = {
                 "翡翠綠色","軍綠色","駝色","太妃糖色"
             ],
 
-            # 檔名對應（全小寫）：cp101_<code>_front.png / cp101_<code>_back.png
+            # 全小寫對齊你 assets：cp101_*.png
             "color_map": {
                 "白色": "white",
                 "淺灰色": "lightgray",
@@ -75,13 +69,14 @@ PRODUCT_CATALOG = {
                 "太妃糖色": "toffee",
             },
 
-            # ✅ 比例座標（不跑偏）
-            # 你原本像素中心大約在 (300,360)（以 600x800 推回比例）
+            # ✅ 比例座標
             "pos_front": {
                 "正中間 (Center)": {"coords": (0.50, 0.45)},
-                "左胸 (Left Chest)": {"coords": (0.37, 0.425)},
-                "右胸 (Right Chest)": {"coords": (0.63, 0.425)},
+                # ✅ 修正：以「穿者視角」=> 左胸在畫面右側、右胸在畫面左側
+                "左胸 (Left Chest)": {"coords": (0.63, 0.425)},
+                "右胸 (Right Chest)": {"coords": (0.37, 0.425)},
             },
+
             "pos_back": {
                 "背中置中 (Center)": {"coords": (0.50, 0.45)},
                 "上背字樣 (Upper Back)": {"coords": (0.50, 0.35)},
@@ -90,45 +85,52 @@ PRODUCT_CATALOG = {
 
         # =========================================================
         # AG21000 重磅棉T（比例座標）
+        # - 修正：衣服找不到 => image_base / color_map 改成「跟你 assets 檔名一致」
+        # - 修正：左臂/右臂補回來（只在正面選）
+        # - 背面只保留：背中置中 + 袖口延續用的「左臂-後/右臂-後」
         # =========================================================
         "AG21000 重磅棉T": {
             "name": "AG21000 重磅棉T",
+
+            # ✅ 這裡請務必與你的檔名一致：
+            #   AG21000_CharcoalGray_front.png
             "image_base": "AG21000",
 
-            # 你可依現有庫存再擴充；這裡先放常用色
             "colors": [
-                "白色", "黑色", "麻灰", "炭灰 (CharcoalGray)", "深藍 (Navy)",
-                "奶茶 (BeigeBrown)"
+                "白色",
+                "黑色",
+                "麻灰",
+                "炭灰 (CharcoalGray)",
+                "深藍 (Navy)",
+                "奶茶 (BeigeBrown)",
             ],
 
-            # 檔名對應（建議全小寫）：ag21000_<code>_front.png / ag21000_<code>_back.png
-            # main.py 有大小寫容錯，所以就算你 assets 不是全小寫也仍可找到
+            # ✅ 這裡也請務必與 assets 檔名一致（CamelCase）
             "color_map": {
-                "白色": "white",
-                "黑色": "black",
-                "麻灰": "heathergrey",
-                "炭灰 (CharcoalGray)": "charcoalgray",
-                "深藍 (Navy)": "navy",
-                "奶茶 (BeigeBrown)": "beigebrown",
+                "白色": "White",
+                "黑色": "Black",
+                "麻灰": "HeatherGrey",
+                "炭灰 (CharcoalGray)": "CharcoalGray",
+                "深藍 (Navy)": "Navy",
+                "奶茶 (BeigeBrown)": "BeigeBrown",
             },
 
-            # ✅ 比例座標（通用穩定點位）
-            # 若你想更精準貼合某款版型，可再微調比例值（但不會再因底圖尺寸而跑掉）
             "pos_front": {
                 "正中間 (Center)": {"coords": (0.50, 0.52)},
-                "左胸 (Left Chest)": {"coords": (0.38, 0.40)},
-                "右胸 (Right Chest)": {"coords": (0.62, 0.40)},
+                "左胸 (Left Chest)": {"coords": (0.62, 0.40)},   # 穿者左=畫面右
+                "右胸 (Right Chest)": {"coords": (0.38, 0.40)},  # 穿者右=畫面左
                 "左臂 (Left Sleeve)": {"coords": (0.18, 0.36)},
                 "右臂 (Right Sleeve)": {"coords": (0.82, 0.36)},
             },
+
             "pos_back": {
+                # ✅ 你需求：背面只要正中間
                 "背中置中 (Center)": {"coords": (0.50, 0.52)},
-                "上背字樣 (Upper Back)": {"coords": (0.50, 0.33)},
-                # ✅ 給 main.py 的 SLEEVE_MAPPING 用（正面袖口要投到背面袖口時會找這兩個 key）
+
+                # ✅ 你需求：背面延續前面袖口（main.py 的 SLEEVE_MAPPING 會用到）
                 "左臂-後 (L.Sleeve Back)": {"coords": (0.18, 0.36)},
                 "右臂-後 (R.Sleeve Back)": {"coords": (0.82, 0.36)},
             },
         },
     }
 }
-
