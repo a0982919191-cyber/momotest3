@@ -870,60 +870,98 @@ def app_front():
                     return k
             return None
 
-        def render_upload_ui(pos_dict: dict, side_prefix: str):
-            if not pos_dict:
-                st.info("此產品未設定印刷位置。")
-                return
+        def get_existing_design_key(side_prefix: str, allowed_positions: list[str]) -> str | None:
+    for pos in allowed_positions:
+        k = f"{side_prefix}_{pos}"
+        if k in st.session_state["designs"]:
+            return k
+    return None
 
-            allowed = BASE_FRONT_CHOICES if side_prefix == "front" else BASE_BACK_CHOICES
-            options = [p for p in allowed if p in pos_dict.keys()]
-            extras = [p for p in pos_dict.keys() if p not in options]
 
-            if extras:
-                st.markdown("#### 其他位置（另詢）")
-                for p in extras:
-                    st.markdown(f"<span style='color:#A3A8B3;'>• {p}（不包含於基礎套餐）</span>", unsafe_allow_html=True)
-                st.markdown("---")
+def render_upload_ui(pos_dict: dict, side_prefix: str):
+    if not pos_dict:
+        st.info("此產品未設定印刷位置。")
+        return
 
-            existing_key = get_existing_design_key(side_prefix, options)
+    BASE_FRONT_CHOICES = ["左胸 (Left Chest)", "右胸 (Right Chest)", "正中間 (Center)"]
+    BASE_BACK_CHOICES = ["背中置中 (Center)"]
 
-            if existing_key:
-                locked_pos = existing_key.split("_", 1)[1]
-                st.success(f"已鎖定位置：{locked_pos}（同一面僅能 1 處；如需多位置請另詢）")
-                pk = st.selectbox("位置（已鎖定）", options, index=options.index(locked_pos), disabled=True,
-                                  key=f"sel_{v}_{side_prefix}")
-            else:
-                pk = st.selectbox("位置（基礎套餐）", options, key=f"sel_{v}_{side_prefix}")
+    allowed = BASE_FRONT_CHOICES if side_prefix == "front" else BASE_BACK_CHOICES
+    options = [p for p in allowed if p in pos_dict.keys()]
+    extras = [p for p in pos_dict.keys() if p not in options]
 
-            design_key = f"{side_prefix}_{pk}"
-            if design_key not in st.session_state["uploader_keys"]:
-                st.session_state["uploader_keys"][design_key] = 0
-            uk = st.session_state["uploader_keys"][design_key]
+    # 其他位置（另詢）提示
+    if extras:
+        st.markdown("#### 其他位置（另詢）")
+        for p in extras:
+            st.markdown(f"<span style='color:#A3A8B3;'>• {p}（不包含於基礎套餐）</span>", unsafe_allow_html=True)
+        st.markdown("---")
 
-            uf = st.file_uploader(f"上傳圖片（{pk}）", type=["png", "jpg", "jpeg"], key=f"u_{v}_{design_key}_{uk}")
+    existing_key = get_existing_design_key(side_prefix, options)
 
-            if uf:
-                file_bytes = uf.getvalue()
-                d_rot = pos_dict[pk].get("default_rot", 0)
+    # ✅ 鎖定：同一面只能 1 處
+    if existing_key:
+        locked_pos = existing_key.split("_", 1)[1]
+        st.success(f"已鎖定位置：{locked_pos}（同一面僅能 1 處；如需多位置請另詢）")
+        pk = st.selectbox(
+            "位置（已鎖定）",
+            options,
+            index=options.index(locked_pos),
+            disabled=True,
+            key=f"sel_{v}_{side_prefix}",
+        )
+    else:
+        pk = st.selectbox(
+            "位置（基礎套餐）",
+            options,
+            key=f"sel_{v}_{side_prefix}",
+        )
 
-                st.session_state["designs"][design_key] = {
-                    "bytes": file_bytes,
-                    "rb": False,
-                    "sz": 150,
-                    "rot": d_rot,
-                    "ox": 0,
-                    "oy": 0,
-                }
+    design_key = f"{side_prefix}_{pk}"
 
-                log_event("upload_design", step="step2", series=s, product=v, color=selected_color_name,
-                          qty=int(total_qty), meta={"pos": pk, "filename": uf.name, "bytes": len(file_bytes), "package": "base"})
-                st.rerun()
+    # ✅ 固定 uploader key：不要把 uk/隨機值混進 key，避免 widget 被重建
+    uploader_key = f"uploader::{v}::{side_prefix}"
 
-            if design_key in st.session_state["designs"]:
-                if st.button(f"🗑️ 刪除圖片（{pk}）", key=f"btn_clear_{v}_{design_key}"):
-                    del st.session_state["designs"][design_key]
-                    st.session_state["uploader_keys"][design_key] += 1
-                    st.rerun()
+    uf = st.file_uploader(
+        f"上傳圖片（{pk}）",
+        type=["png", "jpg", "jpeg"],
+        key=uploader_key,
+    )
+
+    # ✅ 上傳成功：寫入 session_state（不要立刻 rerun）
+    if uf is not None:
+        file_bytes = uf.getvalue()
+        d_rot = pos_dict[pk].get("default_rot", 0)
+
+        st.session_state["designs"][design_key] = {
+            "bytes": file_bytes,
+            "rb": False,
+            "sz": 150,
+            "rot": d_rot,
+            "ox": 0,
+            "oy": 0,
+        }
+
+        # debug 資訊（你可以保留，確定沒問題後再拿掉）
+        st.caption(f"✅ 已上傳：{uf.name}（{len(file_bytes)//1024} KB）")
+
+        log_event(
+            "upload_design",
+            step="step2",
+            series=s,
+            product=v,
+            color=selected_color_name,
+            qty=int(total_qty),
+            meta={"pos": pk, "filename": uf.name, "bytes": len(file_bytes), "package": "base"},
+        )
+
+    # ✅ 刪除：確保也把 uploader widget 清掉
+    if design_key in st.session_state["designs"]:
+        if st.button(f"🗑️ 刪除圖片（{pk}）", key=f"btn_clear_{v}_{design_key}"):
+            del st.session_state["designs"][design_key]
+            # 清掉 uploader widget（關鍵）
+            st.session_state.pop(uploader_key, None)
+            st.rerun()
 
         with tab_f:
             render_upload_ui(item.get("pos_front", {}), "front")
@@ -1166,3 +1204,4 @@ if nav == "管理後台":
         admin_dashboard()
 else:
     app_front()
+
